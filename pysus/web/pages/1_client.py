@@ -812,8 +812,10 @@ def _show_results(pysus: PySUS, client: str) -> None:
 
     col1, col2 = st.columns([3, 1])
     with col2:
-        if selected_indices and st.button(
-            t("add_to_queue", _lang()), width="stretch"
+        if st.button(
+            t("add_to_queue", _lang()),
+            width="stretch",
+            disabled=not selected_indices,
         ):
             new_indices = [
                 i for i in selected_indices if i not in queued_indices
@@ -888,18 +890,27 @@ def _show_results(pysus: PySUS, client: str) -> None:
                 st.rerun()
     col1, col2, col3 = st.columns(3)
     with col1:
-        if remove_indices and st.button(t("remove", _lang()), width="stretch"):
+        if st.button(
+            t("remove", _lang()), width="stretch", disabled=not remove_indices
+        ):
             remove_targets = {queued_indices[i] for i in remove_indices}
             st.session_state[queue_key] = [
                 i for i in queued_indices if i not in remove_targets
             ]
             st.rerun()
     with col2:
-        if st.button(t("clear", _lang()), width="stretch"):
+        if st.button(
+            t("clear", _lang()), width="stretch", disabled=not download_queue
+        ):
             st.session_state[queue_key] = []
             st.rerun()
     with col3:
-        if st.button(t("download", _lang()), width="stretch", type="primary"):
+        if st.button(
+            t("download", _lang()),
+            width="stretch",
+            type="primary",
+            disabled=not download_queue,
+        ):
             _download_selected(
                 pysus, client, download_queue, st.session_state[dir_key]
             )
