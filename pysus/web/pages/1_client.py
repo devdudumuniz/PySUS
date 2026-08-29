@@ -726,11 +726,14 @@ def _native_dir_picker(title: str, initialdir: str) -> str:
                 continue
 
     elif system == "Windows":
+        # Escape single quotes for PowerShell string literals
+        title_esc = title.replace("'", "''")
+        initialdir_esc = initialdir.replace("'", "''")
         ps = f"""
 Add-Type -AssemblyName System.Windows.Forms
 $f = New-Object System.Windows.Forms.FolderBrowserDialog
-$f.Description = '{title}'
-$f.SelectedPath = '{initialdir}'
+$f.Description = '{title_esc}'
+$f.SelectedPath = '{initialdir_esc}'
 $f.ShowDialog() | Out-Null
 $f.SelectedPath
 """
@@ -742,10 +745,13 @@ $f.SelectedPath
         return r.stdout.strip()
 
     elif system == "Darwin":
+        # Escape backslashes and double quotes for AppleScript string literals
+        title_esc = title.replace("\\", "\\\\").replace('"', '\\"')
+        initialdir_esc = initialdir.replace("\\", "\\\\").replace('"', '\\"')
         prompt_line = (
             'set f to choose folder with prompt "{}"'
             ' default location POSIX file "{}"'
-        ).format(title, initialdir)
+        ).format(title_esc, initialdir_esc)
         applescript = (
             f'tell application "System Events"\n'
             f"    activate\n"
