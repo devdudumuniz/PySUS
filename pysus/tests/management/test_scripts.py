@@ -30,6 +30,13 @@ class TestSyncClientsScript:
         env = load_env(str(env_file))
         assert env == {"ACCESS_KEY": "ak", "SECRET_KEY": "sk"}
 
+    def test_load_env_file_not_found(self):
+        import pytest
+        from pysus.management.scripts.sync_clients import load_env
+
+        with pytest.raises(FileNotFoundError):
+            load_env("non_existent_file.env")
+
     def test_load_env_strips_quotes(self, tmp_path):
         from pysus.management.scripts.sync_clients import load_env
 
