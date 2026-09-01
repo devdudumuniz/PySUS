@@ -8,6 +8,7 @@ state without re-listing.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -111,16 +112,18 @@ class Inventory:
             return [record]
 
         if isinstance(item, BaseRemoteGroup):
-            records: list[FileRecord] = []
-            for file in await item.files:
-                records.extend(await self._walk_ftp_item(file))
-            return records
+            files = await item.files
+            results = await asyncio.gather(
+                *(self._walk_ftp_item(file) for file in files)
+            )
+            return [record for sublist in results for record in sublist]
 
         if isinstance(item, Directory):
-            dir_records: list[FileRecord] = []
-            for child in await item.content:
-                dir_records.extend(await self._walk_ftp_item(child))
-            return dir_records
+            children = await item.content
+            results = await asyncio.gather(
+                *(self._walk_ftp_item(child) for child in children)
+            )
+            return [record for sublist in results for record in sublist]
 
         return []
 
