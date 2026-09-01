@@ -763,28 +763,12 @@ $f.SelectedPath
     return ""
 
 
-def _show_results(pysus: PySUS, client: str) -> None:
-    query_key = f"_query_results_{client}"
-    queue_key = f"_download_queue_{client}"
-    files = st.session_state.get(query_key, [])
-
-    if not files:
-        return
-
-    if queue_key not in st.session_state:
-        st.session_state[queue_key] = []
-
-    raw_queue = st.session_state[queue_key]
-    if raw_queue and not isinstance(raw_queue[0], int):
-        st.session_state[queue_key] = []
-        raw_queue = []
-
-    queued_indices: list[int] = raw_queue
-    download_queue = [files[i] for i in queued_indices]
-
-    if msg := st.session_state.pop("_last_download_msg", None):
-        st.success(msg)
-
+def _render_results_table(
+    client: str,
+    files: list[BaseRemoteFile],
+    queued_indices: list[int],
+    queue_key: str,
+) -> None:
     st.subheader(t("results_title", _lang(), count=str(len(files))))
 
     cache_key = f"_result_rows_{client}"
@@ -824,6 +808,15 @@ def _show_results(pysus: PySUS, client: str) -> None:
                 )
                 st.rerun()
 
+
+def _render_download_queue(
+    pysus: PySUS,
+    client: str,
+    files: list[BaseRemoteFile],
+    queued_indices: list[int],
+    download_queue: list[BaseRemoteFile],
+    queue_key: str,
+) -> None:
     st.divider()
     st.subheader(t("queue_title", _lang(), count=str(len(download_queue))))
 
@@ -904,6 +897,35 @@ def _show_results(pysus: PySUS, client: str) -> None:
                 pysus, client, download_queue, st.session_state[dir_key]
             )
             st.rerun()
+
+
+def _show_results(pysus: PySUS, client: str) -> None:
+    query_key = f"_query_results_{client}"
+    queue_key = f"_download_queue_{client}"
+    files = st.session_state.get(query_key, [])
+
+    if not files:
+        return
+
+    if queue_key not in st.session_state:
+        st.session_state[queue_key] = []
+
+    raw_queue = st.session_state[queue_key]
+    if raw_queue and not isinstance(raw_queue[0], int):
+        st.session_state[queue_key] = []
+        raw_queue = []
+
+    queued_indices: list[int] = raw_queue
+    download_queue = [files[i] for i in queued_indices]
+
+    if msg := st.session_state.pop("_last_download_msg", None):
+        st.success(msg)
+
+    _render_results_table(client, files, queued_indices, queue_key)
+
+    _render_download_queue(
+        pysus, client, files, queued_indices, download_queue, queue_key
+    )
 
 
 def _download_selected(
