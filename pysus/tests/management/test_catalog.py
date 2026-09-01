@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import duckdb
 import pyarrow as pa
 import pytest
-from pysus.management.catalog import CatalogWriter
+from pysus.management.catalog import CatalogWriter, FileOriginMeta
 
 _SCHEMA = """
 CREATE SCHEMA pysus;
@@ -120,7 +120,13 @@ class TestTouchFile:
         writer, cursor, _ = writer_and_cursor
         _insert(cursor, "public/data/x.parquet")
         writer.touch_file(
-            cursor, 1, datetime(2026, 2, 2), 99, source_sha256="cc" * 32
+            cursor,
+            1,
+            FileOriginMeta(
+                modified=datetime(2026, 2, 2),
+                size=99,
+                source_sha256="cc" * 32,
+            )
         )
         result = writer.get_file_full(cursor, "public/data/x.parquet")
         assert result is not None
@@ -132,7 +138,14 @@ class TestTouchFile:
     def test_without_source_sha256(self, writer_and_cursor):
         writer, cursor, _ = writer_and_cursor
         _insert(cursor, "public/data/x.parquet")
-        writer.touch_file(cursor, 1, datetime(2026, 2, 2), 99)
+        writer.touch_file(
+            cursor,
+            1,
+            FileOriginMeta(
+                modified=datetime(2026, 2, 2),
+                size=99,
+            )
+        )
         result = writer.get_file_full(cursor, "public/data/x.parquet")
         assert result is not None
         assert result[1] == datetime(2026, 2, 2)
