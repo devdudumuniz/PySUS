@@ -10,6 +10,7 @@ single source of truth for every file tracked by the workflow.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -62,6 +63,15 @@ def sha256_of(path: Path) -> str:
         while chunk := f.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class FileOriginMeta:
+    """Encapsulates file origin metadata for updates."""
+
+    modified: datetime | None
+    size: int
+    source_sha256: str | None = None
 
 
 class CatalogWriter:
@@ -228,22 +238,20 @@ class CatalogWriter:
         self,
         cursor,
         file_id: int,
-        origin_modified: datetime | None,
-        origin_size: int,
-        source_sha256: str | None = None,
+        meta: FileOriginMeta,
     ) -> None:
         """Update origin metadata without replacing the artifact."""
-        if source_sha256 is not None:
+        if meta.source_sha256 is not None:
             cursor.execute(
                 "UPDATE pysus.files SET origin_modified = ?, "
                 "origin_size = ?, source_sha256 = ? WHERE id = ?",
-                (origin_modified, origin_size, source_sha256, file_id),
+                (meta.modified, meta.size, meta.source_sha256, file_id),
             )
         else:
             cursor.execute(
                 "UPDATE pysus.files SET origin_modified = ?, "
                 "origin_size = ? WHERE id = ?",
-                (origin_modified, origin_size, file_id),
+                (meta.modified, meta.size, file_id),
             )
 
     def delete_file(self, cursor, file_id: int) -> None:

@@ -34,7 +34,7 @@ from pysus.api.ducklake.functional import upload_s3
 from pysus.api.errors import AuthenticationError, ConnectionError
 from pysus.api.models import BaseRemoteFile
 
-from .catalog import CatalogWriter, sha256_of
+from .catalog import CatalogWriter, FileOriginMeta, sha256_of
 from .compare import Comparator
 from .inventory import Inventory
 from .records import (
@@ -365,8 +365,10 @@ class SyncEngine:
                         writer.touch_file(
                             dataset_cursor,
                             file_id,
-                            self._safe_modify(file),
-                            self._safe_size(file),
+                            FileOriginMeta(
+                                modified=self._safe_modify(file),
+                                size=self._safe_size(file),
+                            )
                         )
                         dataset_conn.commit()
                         dataset_cursor.execute("CHECKPOINT")
@@ -394,9 +396,11 @@ class SyncEngine:
                         writer.touch_file(
                             dataset_cursor,
                             file_id,
-                            self._safe_modify(file),
-                            self._safe_size(file),
-                            source_sha256=raw_digest,
+                            FileOriginMeta(
+                                modified=self._safe_modify(file),
+                                size=self._safe_size(file),
+                                source_sha256=raw_digest,
+                            )
                         )
                         dataset_conn.commit()
                         dataset_cursor.execute("CHECKPOINT")
