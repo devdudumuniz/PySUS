@@ -902,6 +902,51 @@ class TestDownloadToParquet:
 
 
 class TestReadParquet:
+    def test_read_parquet_path_with_quote_is_bound(self, tmp_path):
+        import pandas as pd
+
+        parquet_file = tmp_path / "patient's data.parquet"
+        pd.DataFrame({"a": [1]}).to_parquet(parquet_file)
+
+        from pysus.api.client import PySUS
+
+        client = PySUS(db_path=tmp_path / "config.db")
+        result = client.read_parquet([parquet_file], add_dv=False)
+
+        assert result.fetchall() == [(1,)]
+
+    def test_read_parquet_quotes_intersection_identifiers(self, tmp_path):
+        import pandas as pd
+
+        parquet_file = tmp_path / "quoted-column.parquet"
+        pd.DataFrame({'odd"column': [1]}).to_parquet(parquet_file)
+
+        from pysus.api.client import PySUS
+
+        client = PySUS(db_path=tmp_path / "config.db")
+        result = client.read_parquet(
+            [parquet_file], mode="intersection", add_dv=False
+        )
+
+        assert result.df().columns.tolist() == ['odd"column']
+
+    def test_read_parquet_reuses_bound_paths_in_union(self, tmp_path):
+        import pandas as pd
+
+        parquet_file = tmp_path / "self-join.parquet"
+        pd.DataFrame({"a": [1, 2]}).to_parquet(parquet_file)
+
+        from pysus.api.client import PySUS
+
+        client = PySUS(db_path=tmp_path / "config.db")
+        result = client.read_parquet(
+            [parquet_file],
+            sql="SELECT a FROM t UNION ALL SELECT a FROM t",
+            add_dv=False,
+        )
+
+        assert result.fetchall() == [(1,), (2,), (1,), (2,)]
+
     def test_read_parquet_single_path(self, tmp_path):
         import pandas as pd
 

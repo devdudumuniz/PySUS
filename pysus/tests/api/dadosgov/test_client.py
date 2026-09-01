@@ -510,6 +510,36 @@ class TestDadosGov:
                 output.unlink()
 
     @pytest.mark.asyncio
+    async def test_download_failure_preserves_destination_and_cleans_partial(
+        self, tmp_path
+    ):
+        client = DadosGov()
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+
+        async def _aiter_bytes():
+            yield b"partial"
+            raise httpx.ReadError("connection lost")
+
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Length": "20"}
+        mock_response.aiter_bytes = _aiter_bytes
+        cm = AsyncMock()
+        cm.__aenter__.return_value = mock_response
+        mock_http.stream.return_value = cm
+        client._client = mock_http
+
+        mock_file = MagicMock()
+        mock_file.path = "https://example.com/file.csv"
+        output = tmp_path / "download.csv"
+        output.write_bytes(b"existing")
+
+        with pytest.raises(httpx.ReadError, match="connection lost"):
+            await client.download(mock_file, output)
+
+        assert output.read_bytes() == b"existing"
+        assert not output.with_suffix(".csv.partial").exists()
+
+    @pytest.mark.asyncio
     async def test_download_file_no_callback(self, tmp_path):
         client = DadosGov()
         mock_http = AsyncMock(spec=httpx.AsyncClient)

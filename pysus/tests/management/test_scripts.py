@@ -30,6 +30,12 @@ class TestSyncClientsScript:
         env = load_env(str(env_file))
         assert env == {"ACCESS_KEY": "ak", "SECRET_KEY": "sk"}
 
+    def test_load_env_file_not_found(self, tmp_path):
+        from pysus.management.scripts.sync_clients import load_env
+
+        with pytest.raises(FileNotFoundError):
+            load_env(str(tmp_path / "missing.env"))
+
     def test_load_env_strips_quotes(self, tmp_path):
         from pysus.management.scripts.sync_clients import load_env
 
@@ -146,6 +152,22 @@ class TestSyncClientsScript:
                 ):
                     assert sync_clients.main() == 0
 
+    def test_main_handles_exception(self, tmp_path, capsys):
+        from pysus.management.scripts import sync_clients
+
+        with patch.object(
+            sync_clients,
+            "run",
+            new=AsyncMock(side_effect=RuntimeError("mocked error")),
+        ):
+            with patch.object(sync_clients, "load_env", return_value={}):
+                with patch(
+                    "sys.argv",
+                    ["sync_clients", "--datasets", "SINAN"],
+                ):
+                    assert sync_clients.main() == 1
+        assert "Error: mocked error" in capsys.readouterr().err
+
 
 class TestCompareClientsScript:
     def test_load_env(self, tmp_path):
@@ -154,6 +176,30 @@ class TestCompareClientsScript:
         env_file = tmp_path / ".env"
         env_file.write_text("ACCESS_KEY=ak\n")
         assert load_env(str(env_file)) == {"ACCESS_KEY": "ak"}
+
+    def test_load_env_file_not_found(self, tmp_path):
+        from pysus.management.scripts.compare_clients import load_env
+
+        with pytest.raises(FileNotFoundError):
+            load_env(str(tmp_path / "missing.env"))
+
+    def test_load_env_skips_blanks_and_comments(self, tmp_path):
+        from pysus.management.scripts.compare_clients import load_env
+
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "# comment\n\n  \nACCESS_KEY=ak\nNO_EQUALS\nSECRET_KEY=sk\n"
+        )
+        env = load_env(str(env_file))
+        assert env == {"ACCESS_KEY": "ak", "SECRET_KEY": "sk"}
+
+    def test_load_env_strips_quotes(self, tmp_path):
+        from pysus.management.scripts.compare_clients import load_env
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("ACCESS_KEY=\"ak\"\nSECRET_KEY='sk'\n")
+        env = load_env(str(env_file))
+        assert env == {"ACCESS_KEY": "ak", "SECRET_KEY": "sk"}
 
     @pytest.mark.asyncio
     async def test_run(self):
@@ -183,26 +229,88 @@ class TestCompareClientsScript:
         from pysus.management.scripts.compare_clients import print_table
 
         result = {
-            "origin_counts": {"ftp": 1, "dadosgov": 0, "ducklake": 0},
+            "origin_counts": {"ftp": 2, "dadosgov": 1, "ducklake": 0},
             "reports": [
                 {
                     "dataset": "SINAN",
-                    "total": 1,
-                    "on_all_three": 0,
+                    "total": 100,
+                    "on_all_three": 10,
+                    "on_ftp_dadosgov": 20,
+                    "on_ftp_s3": 30,
+                    "on_dadosgov_s3": 40,
+                    "ftp_only": 50,
+                    "dadosgov_only": 60,
+                    "s3_only": 70,
+                    "examples": {
+                        "ftp_only": ["SINAN/DENG/2025/-/dengbr25"],
+                        "on_ftp_s3": ["SINAN/DENG/2024/-/dengbr24"],
+                        "all_three": ["SINAN/CHIK/2025/-/chikbr25"],
+                    },
+                },
+                {
+                    "dataset": "SIM",
+                    "total": 5,
+                    "on_all_three": 1,
                     "on_ftp_dadosgov": 0,
                     "on_ftp_s3": 0,
                     "on_dadosgov_s3": 0,
-                    "ftp_only": 1,
-                    "dadosgov_only": 0,
-                    "s3_only": 0,
-                    "examples": {"ftp_only": ["SINAN/DENG/2025/-/dengbr25"]},
-                }
+                    "ftp_only": 2,
+                    "dadosgov_only": 1,
+                    "s3_only": 1,
+                    "examples": None,
+                },
             ],
         }
         print_table(result)
         out = capsys.readouterr().out
-        assert "SINAN" in out
-        assert "ftp_only" in out
+
+        lines = out.splitlines()
+        assert lines[0].split() == [
+            "dataset",
+            "total",
+            "all3",
+            "ftp+dg",
+            "ftp+s3",
+            "dg+s3",
+            "ftp",
+            "dg",
+            "s3",
+        ]
+        assert lines[1] == "-" * len(lines[0])
+        assert lines[2].split() == [
+            "SINAN",
+            "100",
+            "10",
+            "20",
+            "30",
+            "40",
+            "50",
+            "60",
+            "70",
+        ]
+        assert lines[3].split() == [
+            "SIM",
+            "5",
+            "1",
+            "0",
+            "0",
+            "0",
+            "2",
+            "1",
+            "1",
+        ]
+
+        # Verify origin record counts
+        assert "origin record counts: ftp=2, dadosgov=1, ducklake=0" in out
+
+        # Verify examples
+        assert "[SINAN] examples:" in out
+        assert "  ftp_only        SINAN/DENG/2025/-/dengbr25" in out
+        assert "  all_three       SINAN/CHIK/2025/-/chikbr25" in out
+
+        # Verify uninteresting examples are skipped
+        assert "on_ftp_s3" not in out
+        assert "[SIM] examples:" not in out
 
     def test_main_json(self, tmp_path, capsys):
         from pysus.management.scripts import compare_clients
@@ -223,6 +331,56 @@ class TestCompareClientsScript:
             ):
                 assert compare_clients.main() == 0
         assert '"origin_counts"' in capsys.readouterr().out
+
+    def test_main_default(self, tmp_path, capsys):
+        from pysus.management.scripts import compare_clients
+
+        with patch.object(
+            compare_clients,
+            "run",
+            new=AsyncMock(
+                return_value={
+                    "origin_counts": {},
+                    "reports": [],
+                }
+            ),
+        ):
+            with patch.object(compare_clients, "print_table") as mock_print:
+                with patch(
+                    "sys.argv",
+                    ["compare_clients", "--datasets", "SINAN"],
+                ):
+                    assert compare_clients.main() == 0
+                mock_print.assert_called_once()
+
+    def test_main_output(self, tmp_path, capsys):
+        import json
+
+        from pysus.management.scripts import compare_clients
+
+        output_file = tmp_path / "report.json"
+
+        with patch.object(
+            compare_clients,
+            "run",
+            new=AsyncMock(
+                return_value={
+                    "origin_counts": {"test": 1},
+                    "reports": [],
+                }
+            ),
+        ):
+            with patch.object(compare_clients, "print_table") as mock_print:
+                with patch(
+                    "sys.argv",
+                    ["compare_clients", "--output", str(output_file)],
+                ):
+                    assert compare_clients.main() == 0
+                mock_print.assert_called_once()
+
+        assert output_file.exists()
+        content = json.loads(output_file.read_text())
+        assert content == {"origin_counts": {"test": 1}, "reports": []}
 
 
 class TestRelayoutBucketScript:

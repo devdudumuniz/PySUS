@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pysus.api.errors import CatalogError
 
@@ -279,6 +279,30 @@ class CatalogWriter:
         Returns ``(file_id, created)``.
         """
         existing = self.get_file(cursor, path)
+
+        base_values = [
+            size,
+            rows,
+            modified or datetime.now(),
+            origin_modified,
+            origin_size,
+            origin_path,
+            year,
+            month,
+            state,
+        ]
+
+        optional_kwargs = {
+            "origin": origin,
+            "format": format,
+            "sha256": sha256,
+            "source_sha256": source_sha256,
+            "type": file_type,
+        }
+
+        opt_cols = [k for k, v in optional_kwargs.items() if v is not None]
+        opt_vals = [v for v in optional_kwargs.values() if v is not None]
+
         if existing:
             file_id, _ = existing
             sets = [
@@ -291,34 +315,9 @@ class CatalogWriter:
                 "year = ?",
                 "month = ?",
                 "state = ?",
-            ]
-            update_values: list[Any] = [
-                size,
-                rows,
-                modified or datetime.now(),
-                origin_modified,
-                origin_size,
-                origin_path,
-                year,
-                month,
-                state,
-            ]
-            if origin is not None:
-                sets.append("origin = ?")
-                update_values.append(origin)
-            if format is not None:
-                sets.append("format = ?")
-                update_values.append(format)
-            if sha256 is not None:
-                sets.append("sha256 = ?")
-                update_values.append(sha256)
-            if source_sha256 is not None:
-                sets.append("source_sha256 = ?")
-                update_values.append(source_sha256)
-            if file_type is not None:
-                sets.append("type = ?")
-                update_values.append(file_type)
-            update_values.append(file_id)
+            ] + [f"{c} = ?" for c in opt_cols]
+
+            update_values = base_values + opt_vals + [file_id]
             cursor.execute(
                 f"UPDATE pysus.files SET {', '.join(sets)} WHERE id = ?",
                 update_values,
@@ -328,37 +327,10 @@ class CatalogWriter:
         cursor.execute("SELECT MAX(id) FROM pysus.files")
         max_row = cursor.fetchone()
         file_id = (max_row[0] or 0) + 1
-        columns = ["id", *_FILES_BASE_COLUMNS]
-        values: list[Any] = [
-            file_id,
-            dataset_id,
-            group_id,
-            path,
-            size,
-            rows,
-            modified or datetime.now(),
-            origin_modified,
-            origin_size,
-            origin_path,
-            year,
-            month,
-            state,
-        ]
-        if origin is not None:
-            columns.append("origin")
-            values.append(origin)
-        if format is not None:
-            columns.append("format")
-            values.append(format)
-        if sha256 is not None:
-            columns.append("sha256")
-            values.append(sha256)
-        if source_sha256 is not None:
-            columns.append("source_sha256")
-            values.append(source_sha256)
-        if file_type is not None:
-            columns.append("type")
-            values.append(file_type)
+
+        columns = ["id", *_FILES_BASE_COLUMNS] + opt_cols
+        values = [file_id, dataset_id, group_id, path] + base_values + opt_vals
+
         placeholders = ", ".join("?" for _ in columns)
         cursor.execute(
             f"INSERT INTO pysus.files ({', '.join(columns)}) "

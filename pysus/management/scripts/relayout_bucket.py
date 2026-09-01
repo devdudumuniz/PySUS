@@ -17,9 +17,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 from pathlib import Path
 
 import httpx
+from pysus.api.ducklake.functional import upload_s3
 from pysus.management.normalize import BucketNormalizer
 
 CATALOGS = (
@@ -49,7 +52,7 @@ def load_env(path: str = ".env") -> dict[str, str]:
     return env
 
 
-def main() -> int:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dry-run",
@@ -61,17 +64,12 @@ def main() -> int:
         default="/tmp/opencode/relayout",
         help="Working directory for downloaded catalogs",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    env = load_env()
-    normalizer = BucketNormalizer(
-        access_key=env["ACCESS_KEY"],
-        secret_key=env["SECRET_KEY"],
-    )
 
-    workdir = Path(args.workdir)
-    workdir.mkdir(parents=True, exist_ok=True)
-
+def list_objects(
+    normalizer: BucketNormalizer,
+) -> tuple[set[str], dict[str, int]]:
     print("listing objects...", flush=True)
     object_keys: set[str] = set()
     object_sizes: dict[str, int] = {}
@@ -80,7 +78,10 @@ def main() -> int:
             object_keys.add(key)
             object_sizes[key] = size
     print(f"objects: {len(object_keys)}", flush=True)
+    return object_keys, object_sizes
 
+
+def download_catalogs(workdir: Path) -> None:
     print("downloading catalogs...", flush=True)
     with httpx.Client(follow_redirects=True, timeout=600) as client:
         for name in CATALOGS:
@@ -93,8 +94,11 @@ def main() -> int:
             (workdir / f"{name}.duckdb").write_bytes(response.content)
             print(f"  {name} ({len(response.content)} bytes)", flush=True)
 
+
+def survey_catalogs(
+    normalizer: BucketNormalizer, workdir: Path, object_keys: set[str]
+) -> tuple[dict, set[str]]:
     all_old_paths: set[str] = set()
-    all_new_paths: set[str] = set()
     plans = {}
 
     for name in CATALOGS:
@@ -104,19 +108,14 @@ def main() -> int:
         plans[name] = plan
         all_old_paths.update(fix.old_path for fix in plan.catalog_fixes)
         all_old_paths.update(delete.path for delete in plan.catalog_row_deletes)
-        all_new_paths.update(fix.new_path for fix in plan.catalog_fixes)
         print(f"  {name}: {plan.summary()}", flush=True)
 
-    print("relocating uncataloged objects...", flush=True)
-    orphans = object_keys - all_old_paths
-    orphan_plan = normalizer.relocate_uncataloged(orphans, set())
-    plans["__orphans__"] = orphan_plan
-    print(f"  orphans: {orphan_plan.summary()}", flush=True)
+    return plans, all_old_paths
 
-    if args.dry_run:
-        print("DRY RUN — no changes applied", flush=True)
-        return 0
 
+def apply_object_changes(
+    normalizer: BucketNormalizer, plans: dict, object_sizes: dict[str, int]
+) -> dict[str, str]:
     print("relocating objects (aliases kept at old keys)...", flush=True)
     aliases: dict[str, str] = {}
     for name, plan in plans.items():
@@ -130,7 +129,12 @@ def main() -> int:
             )
         )
         normalizer.apply_objects([], plan.object_deletes, dry_run=False)
+    return aliases
 
+
+def apply_catalog_updates(
+    normalizer: BucketNormalizer, plans: dict, workdir: Path
+) -> None:
     print("applying catalog updates...", flush=True)
     for name in CATALOGS:
         plan = plans[name]
@@ -141,11 +145,9 @@ def main() -> int:
             dry_run=False,
         )
 
-    print("uploading catalogs...", flush=True)
-    import asyncio
-    import json
 
-    from pysus.api.ducklake.functional import upload_s3
+def upload_catalogs(workdir: Path, env: dict[str, str]) -> None:
+    print("uploading catalogs...", flush=True)
 
     async def upload_all():
         for name in CATALOGS:
@@ -159,6 +161,10 @@ def main() -> int:
 
     asyncio.run(upload_all())
 
+
+def write_alias_registry(
+    normalizer: BucketNormalizer, aliases: dict[str, str]
+) -> None:
     print("writing alias registry...", flush=True)
     registry_key = "public/data/.aliases.json"
     try:
@@ -175,6 +181,39 @@ def main() -> int:
         Body=json.dumps(registry, indent=2, sort_keys=True).encode(),
     )
     print(f"alias registry: {len(registry)} entries", flush=True)
+
+
+def main() -> int:
+    args = parse_args()
+    env = load_env()
+    normalizer = BucketNormalizer(
+        access_key=env["ACCESS_KEY"],
+        secret_key=env["SECRET_KEY"],
+    )
+
+    workdir = Path(args.workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    object_keys, object_sizes = list_objects(normalizer)
+    download_catalogs(workdir)
+
+    plans, all_old_paths = survey_catalogs(normalizer, workdir, object_keys)
+
+    print("relocating uncataloged objects...", flush=True)
+    orphans = object_keys - all_old_paths
+    orphan_plan = normalizer.relocate_uncataloged(orphans, set())
+    plans["__orphans__"] = orphan_plan
+    print(f"  orphans: {orphan_plan.summary()}", flush=True)
+
+    if args.dry_run:
+        print("DRY RUN — no changes applied", flush=True)
+        return 0
+
+    aliases = apply_object_changes(normalizer, plans, object_sizes)
+    apply_catalog_updates(normalizer, plans, workdir)
+    upload_catalogs(workdir, env)
+    write_alias_registry(normalizer, aliases)
+
     print("done", flush=True)
     return 0
 

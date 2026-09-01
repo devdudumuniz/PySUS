@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from pysus.management.records import FileComparison, FileRecord
-from pysus.management.sync import SyncEngine
+from pysus.management.sync import CatalogCursors, SyncEngine
 
 
 @pytest.fixture
@@ -335,7 +335,9 @@ class TestCatalogRows:
         ) as mock_writer_prop:
             mock_writer_prop.return_value = writer
             engine._catalog_rows(
-                central_cursor, dataset_cursor, columns_cursor, file, payload
+                CatalogCursors(central_cursor, dataset_cursor, columns_cursor),
+                file,
+                payload,
             )
 
         writer.ensure_dataset.assert_called_once()
@@ -380,13 +382,20 @@ class TestCatalogWriteEntry:
         central.transaction = MagicMock(return_value=_Ctx(MagicMock()))
         columns.transaction = MagicMock(return_value=_Ctx(MagicMock()))
 
-        with patch.object(
-            SyncEngine, "writer", new_callable=PropertyMock
-        ) as mock_writer_prop:
+        ducklake_mock = MagicMock()
+        ducklake_mock.catalog_adapter = central
+        ducklake_mock.columns_adapter = columns
+
+        with (
+            patch.object(
+                SyncEngine, "writer", new_callable=PropertyMock
+            ) as mock_writer_prop,
+            patch.object(
+                SyncEngine, "_require_ducklake", return_value=ducklake_mock
+            ),
+        ):
             mock_writer_prop.return_value = writer
-            engine._catalog_write_entry(
-                adapter, central, columns, file, payload
-            )
+            engine._catalog_write_entry(adapter, file, payload)
 
         adapter.transaction.assert_called_once()
         writer._ensure_management_columns.assert_called_once()

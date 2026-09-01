@@ -1,4 +1,3 @@
-import pathlib
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -135,7 +134,7 @@ async def test_datasets_raises_connection_error(ftp_client):
 
 
 @pytest.mark.asyncio
-async def test_download_file_reconnects_on_failure(ftp_client):
+async def test_download_file_reconnects_on_failure(ftp_client, tmp_path):
     mock_ftp_internal = MagicMock()
     mock_ftp_internal.voidcmd.side_effect = [BrokenPipeError, None]
     ftp_client._ftp = mock_ftp_internal
@@ -143,16 +142,15 @@ async def test_download_file_reconnects_on_failure(ftp_client):
     mock_file = MagicMock()
     mock_file.path = "remote/path.dbc"
 
-    with (
-        patch("pysus.api.ftp.client.FTP.connect") as mock_connect,
-        patch("builtins.open", MagicMock()),
-    ):
-        await ftp_client.download(mock_file, pathlib.Path("test.dbc"))
+    output = tmp_path / "test.dbc"
+    with patch("pysus.api.ftp.client.FTP.connect") as mock_connect:
+        await ftp_client.download(mock_file, output)
         assert mock_connect.call_count >= 1
+    assert output.exists()
 
 
 @pytest.mark.asyncio
-async def test_download_file_with_callback(ftp_client):
+async def test_download_file_with_callback(ftp_client, tmp_path):
     mock_ftp_internal = MagicMock()
     ftp_client._ftp = mock_ftp_internal
 
@@ -166,15 +164,14 @@ async def test_download_file_with_callback(ftp_client):
 
     mock_ftp_internal.retrbinary.side_effect = simulate_retrbinary
 
-    with patch("builtins.open", MagicMock()):
-        await ftp_client.download(
-            mock_file, pathlib.Path("test.dbc"), callback=callback
-        )
-        callback.assert_called_once()
+    output = tmp_path / "test.dbc"
+    await ftp_client.download(mock_file, output, callback=callback)
+    callback.assert_called_once()
+    assert output.read_bytes() == b"chunk_data"
 
 
 @pytest.mark.asyncio
-async def test_download_file_without_callback(ftp_client):
+async def test_download_file_without_callback(ftp_client, tmp_path):
     mock_ftp_internal = MagicMock()
     ftp_client._ftp = mock_ftp_internal
 
@@ -186,8 +183,31 @@ async def test_download_file_without_callback(ftp_client):
 
     mock_ftp_internal.retrbinary.side_effect = simulate_retrbinary
 
-    with patch("builtins.open", MagicMock()):
-        await ftp_client.download(mock_file, pathlib.Path("test.dbc"))
+    output = tmp_path / "test.dbc"
+    await ftp_client.download(mock_file, output)
+    assert output.read_bytes() == b"chunk_data"
+
+
+@pytest.mark.asyncio
+async def test_download_file_cleans_partial_on_failure(ftp_client, tmp_path):
+    mock_ftp_internal = MagicMock()
+    ftp_client._ftp = mock_ftp_internal
+    mock_file = MagicMock()
+    mock_file.path = "remote/path.dbc"
+
+    def fail_after_chunk(_cmd, callback):
+        callback(b"partial")
+        raise OSError("connection lost")
+
+    mock_ftp_internal.retrbinary.side_effect = fail_after_chunk
+    output = tmp_path / "test.dbc"
+    output.write_bytes(b"existing")
+
+    with pytest.raises(OSError, match="connection lost"):
+        await ftp_client.download(mock_file, output)
+
+    assert output.read_bytes() == b"existing"
+    assert not output.with_suffix(".dbc.partial").exists()
 
 
 @pytest.mark.asyncio
