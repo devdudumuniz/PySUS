@@ -8,6 +8,7 @@ from pysus.management.normalize import (
     BucketNormalizer,
     CatalogPathFix,
     CatalogRowDelete,
+    FileAttributes,
     ObjectRename,
     formatter_for,
 )
@@ -77,38 +78,43 @@ class TestSplitKey:
 class TestEnrich:
     def test_catalog_values_win(self, normalizer):
         enriched = normalizer._enrich(
-            "ftp", "SINAN", "DENGBR25.dbc", "DENG", 2025, None, None
+            "ftp",
+            "SINAN",
+            "DENGBR25.dbc",
+            FileAttributes("DENG", 2025, None, None),
         )
-        assert enriched == {
-            "group": "DENG",
-            "year": 2025,
-            "month": None,
-            "state": None,
-        }
+        assert enriched.group == "DENG"
+        assert enriched.year == 2025
+        assert enriched.month is None
+        assert enriched.state is None
 
     def test_formatter_fills_gaps(self, normalizer):
         enriched = normalizer._enrich(
-            "ftp", "SINAN", "DENGBR25.dbc", None, None, None, None
+            "ftp",
+            "SINAN",
+            "DENGBR25.dbc",
+            FileAttributes(None, None, None, None),
         )
-        assert enriched["group"] == "DENG"
-        assert enriched["year"] == 2025
+        assert enriched.group == "DENG"
+        assert enriched.year == 2025
 
     def test_legacy_group_replaced_by_formatter(self, normalizer):
         enriched = normalizer._enrich(
-            "ftp", "CIHA", "CIHAMA2209.parquet", "Dados", 2022, 9, "MA"
+            "ftp",
+            "CIHA",
+            "CIHAMA2209.parquet",
+            FileAttributes("Dados", 2022, 9, "MA"),
         )
-        assert enriched["group"] == "CIHA"
+        assert enriched.group == "CIHA"
 
     def test_unknown_formatter_keeps_values(self, normalizer):
         enriched = normalizer._enrich(
-            "ftp", "NOPE", "X.dbc", "G", 2020, 1, "AC"
+            "ftp", "NOPE", "X.dbc", FileAttributes("G", 2020, 1, "AC")
         )
-        assert enriched == {
-            "group": "G",
-            "year": 2020,
-            "month": 1,
-            "state": "AC",
-        }
+        assert enriched.group == "G"
+        assert enriched.year == 2020
+        assert enriched.month == 1
+        assert enriched.state == "AC"
 
 
 class TestSurveyRelayout:

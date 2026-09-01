@@ -59,6 +59,14 @@ class CatalogPathFix:
 
 
 @dataclass
+class FileAttributes:
+    group: str | None
+    year: int | None
+    month: int | None
+    state: str | None
+
+
+@dataclass
 class CatalogRowDelete:
     catalog: str
     path: str
@@ -448,23 +456,20 @@ class BucketNormalizer:
         origin: str,
         dataset: str,
         name: str,
-        group: str | None,
-        year: int | None,
-        month: int | None,
-        state: str | None,
-    ) -> dict:
+        attrs: FileAttributes,
+    ) -> FileAttributes:
         """Fill attribute gaps using the dataset formatter.
 
         Catalog values win; formatter output fills missing values and
         replaces legacy directory names (e.g. group ``"Dados"``) with the
         parsed group code.
         """
-        enriched = {
-            "group": group,
-            "year": year,
-            "month": month,
-            "state": state,
-        }
+        enriched = FileAttributes(
+            group=attrs.group,
+            year=attrs.year,
+            month=attrs.month,
+            state=attrs.state,
+        )
         formatter = formatter_for(origin, dataset)
         if formatter is None:
             return enriched
@@ -477,16 +482,16 @@ class BucketNormalizer:
         if parsed_group and isinstance(parsed_group, dict):
             parsed_group = parsed_group.get("name")
 
-        if parsed_group and str(parsed_group) != enriched["group"]:
+        if parsed_group and str(parsed_group) != enriched.group:
             # formatters are curated; catalog groups may be legacy
             # (e.g. directory names) or NULL
-            enriched["group"] = str(parsed_group)
-        if enriched["year"] is None and parsed.get("year"):
-            enriched["year"] = int(parsed["year"])
-        if enriched["month"] is None and parsed.get("month"):
-            enriched["month"] = int(parsed["month"])
-        if enriched["state"] is None and parsed.get("state"):
-            enriched["state"] = str(parsed["state"])
+            enriched.group = str(parsed_group)
+        if enriched.year is None and parsed.get("year"):
+            enriched.year = int(parsed["year"])
+        if enriched.month is None and parsed.get("month"):
+            enriched.month = int(parsed["month"])
+        if enriched.state is None and parsed.get("state"):
+            enriched.state = str(parsed["state"])
         return enriched
 
     def survey_relayout(
@@ -522,16 +527,24 @@ class BucketNormalizer:
                 Path(origin_path).name if origin_path else Path(path).name
             )
             enriched = self._enrich(
-                origin, dataset, source_name, group, year, month, state
+                origin,
+                dataset,
+                source_name,
+                FileAttributes(
+                    group=group,
+                    year=year,
+                    month=month,
+                    state=state,
+                ),
             )
             new_key = compose_s3_key(
                 origin=origin,
                 dataset=dataset,
                 name=source_name,
-                group=enriched["group"],
-                year=enriched["year"],
-                month=enriched["month"],
-                state=enriched["state"],
+                group=enriched.group,
+                year=enriched.year,
+                month=enriched.month,
+                state=enriched.state,
             )
             if new_key == path:
                 continue
@@ -605,16 +618,24 @@ class BucketNormalizer:
                 continue
             name = Path(key).name
             enriched = self._enrich(
-                origin, dataset, name, None, None, None, None
+                origin,
+                dataset,
+                name,
+                FileAttributes(
+                    group=None,
+                    year=None,
+                    month=None,
+                    state=None,
+                ),
             )
             new_key = compose_s3_key(
                 origin=origin,
                 dataset=dataset,
                 name=name,
-                group=enriched["group"],
-                year=enriched["year"],
-                month=enriched["month"],
-                state=enriched["state"],
+                group=enriched.group,
+                year=enriched.year,
+                month=enriched.month,
+                state=enriched.state,
             )
             if new_key == key:
                 plan.raw_objects.append(key)
