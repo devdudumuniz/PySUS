@@ -224,6 +224,55 @@ class TestCompareClientsScript:
                 assert compare_clients.main() == 0
         assert '"origin_counts"' in capsys.readouterr().out
 
+    def test_main_default(self, tmp_path, capsys):
+        from pysus.management.scripts import compare_clients
+
+        with patch.object(
+            compare_clients,
+            "run",
+            new=AsyncMock(
+                return_value={
+                    "origin_counts": {},
+                    "reports": [],
+                }
+            ),
+        ):
+            with patch.object(compare_clients, "print_table") as mock_print:
+                with patch(
+                    "sys.argv",
+                    ["compare_clients", "--datasets", "SINAN"],
+                ):
+                    assert compare_clients.main() == 0
+                mock_print.assert_called_once()
+
+    def test_main_output(self, tmp_path, capsys):
+        from pysus.management.scripts import compare_clients
+        import json
+
+        output_file = tmp_path / "report.json"
+
+        with patch.object(
+            compare_clients,
+            "run",
+            new=AsyncMock(
+                return_value={
+                    "origin_counts": {"test": 1},
+                    "reports": [],
+                }
+            ),
+        ):
+            with patch.object(compare_clients, "print_table") as mock_print:
+                with patch(
+                    "sys.argv",
+                    ["compare_clients", "--output", str(output_file)],
+                ):
+                    assert compare_clients.main() == 0
+                mock_print.assert_called_once()
+
+        assert output_file.exists()
+        content = json.loads(output_file.read_text())
+        assert content == {"origin_counts": {"test": 1}, "reports": []}
+
 
 class TestRelayoutBucketScript:
     def test_load_env(self, tmp_path):
