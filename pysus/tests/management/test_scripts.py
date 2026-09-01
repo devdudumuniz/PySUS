@@ -155,6 +155,24 @@ class TestCompareClientsScript:
         env_file.write_text("ACCESS_KEY=ak\n")
         assert load_env(str(env_file)) == {"ACCESS_KEY": "ak"}
 
+    def test_load_env_skips_blanks_and_comments(self, tmp_path):
+        from pysus.management.scripts.compare_clients import load_env
+
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "# comment\n\n  \nACCESS_KEY=ak\nNO_EQUALS\nSECRET_KEY=sk\n"
+        )
+        env = load_env(str(env_file))
+        assert env == {"ACCESS_KEY": "ak", "SECRET_KEY": "sk"}
+
+    def test_load_env_strips_quotes(self, tmp_path):
+        from pysus.management.scripts.compare_clients import load_env
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("ACCESS_KEY=\"ak\"\nSECRET_KEY='sk'\n")
+        env = load_env(str(env_file))
+        assert env == {"ACCESS_KEY": "ak", "SECRET_KEY": "sk"}
+
     @pytest.mark.asyncio
     async def test_run(self):
         from pysus.management.scripts.compare_clients import run
