@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pysus.api.errors import CatalogError
+from pysus.api.metadata.models import DatasetGroup
 
 if TYPE_CHECKING:  # pragma: no cover
     from pysus.api.ducklake.client import DuckLake
@@ -154,19 +155,21 @@ class CatalogWriter:
         self,
         cursor,
         dataset_id: int,
-        name: str | None,
-        long_name: str | None = None,
-        description: str | None = None,
+        group: DatasetGroup | str | None,
     ) -> int | None:
         """Return the group id for (dataset, name), creating it if needed."""
-        if not name:
+        if not group:
             return None
 
-        name = name.strip().upper()
-        # ``long_name`` is NOT NULL; fall back to the group code itself when
-        # the source carries no long name (e.g. SIM's legacy "D" group).
-        if not long_name:
+        if isinstance(group, DatasetGroup):
+            name = group.name.strip().upper()
+            long_name = group.long_name or name
+            description = group.description
+        else:
+            name = str(group).strip().upper()
             long_name = name
+            description = None
+
         cursor.execute(
             "SELECT id, long_name, description FROM pysus.dataset_groups "
             "WHERE dataset_id = ? AND name = ?",
