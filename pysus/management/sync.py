@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from logging import error, info, warning
 from pathlib import Path
@@ -87,6 +88,15 @@ _SMALL_FILE_BYTES: int = 64 * 1024 * 1024  # 64 MB
 #: while a handful of multi-GB DATASUS archives are processed almost one
 #: at a time.  Keeps peak RAM/disk usage bounded on low-resource hosts.
 _CONCURRENCY_BUDGET: int = 2500 * 1024 * 1024  # 2.5 GB
+
+
+@dataclass
+class CatalogCursors:
+    """Bundles cursors for the three metadata catalogs."""
+
+    central: Any
+    dataset: Any
+    columns: Any
 
 
 class _WeightGate:
@@ -423,9 +433,9 @@ class SyncEngine:
                     "parquet_digest": parquet_digest,
                 }
                 self._catalog_rows(
-                    central_cursor,
-                    dataset_cursor,
-                    columns_cursor,
+                    CatalogCursors(
+                        central_cursor, dataset_cursor, columns_cursor
+                    ),
                     file,
                     payload,
                 )
@@ -1162,9 +1172,9 @@ class SyncEngine:
                 with adapter.transaction() as (conn, dataset_cursor):
                     self.writer._ensure_management_columns(dataset_cursor)
                     self._catalog_rows(
-                        central_cursor,
-                        dataset_cursor,
-                        columns_cursor,
+                        CatalogCursors(
+                            central_cursor, dataset_cursor, columns_cursor
+                        ),
                         file,
                         payload,
                     )
@@ -1175,16 +1185,14 @@ class SyncEngine:
 
     def _catalog_rows(
         self,
-        central_cursor,
-        dataset_cursor,
-        columns_cursor,
+        cursors: CatalogCursors,
         file: BaseRemoteFile,
         payload: dict,
     ) -> None:
         """Write dataset/group/file/column rows for an uploaded artifact."""
         writer = self.writer
         dataset_id = writer.ensure_dataset(
-            central_cursor,
+            cursors.central,
             file.dataset.name,
             file.dataset.long_name,
             getattr(file.dataset, "description", None),
@@ -1194,7 +1202,7 @@ class SyncEngine:
         group_name = getattr(group, "name", None) if group is not None else None
         group_name = str(group_name) if group_name else None
         group_id = writer.ensure_group(
-            dataset_cursor,
+            cursors.dataset,
             dataset_id,
             group_name,
             getattr(group, "long_name", None) if group else None,
@@ -1202,7 +1210,7 @@ class SyncEngine:
         )
 
         writer.upsert_file(
-            dataset_cursor,
+            cursors.dataset,
             dataset_id=dataset_id,
             group_id=group_id,
             path=payload["s3_key"],
@@ -1222,12 +1230,12 @@ class SyncEngine:
             file_type="PARQUET",
         )
 
-        inserted = writer.get_file(dataset_cursor, payload["s3_key"])
+        inserted = writer.get_file(cursors.dataset, payload["s3_key"])
         assert inserted is not None
         file_id, _ = inserted
         writer.link_columns(
-            dataset_cursor,
-            columns_cursor,
+            cursors.dataset,
+            cursors.columns,
             file_id,
             payload["schema"],
             dataset_id,
@@ -1237,7 +1245,7 @@ class SyncEngine:
             from pysus.api.saude.schemas import apply_column_descriptions
 
             apply_column_descriptions(
-                columns_cursor,
+                cursors.columns,
                 dataset_id,
                 dataset=file.dataset.name.lower(),
                 endpoint=file.basename.rsplit(".", 1)[0],

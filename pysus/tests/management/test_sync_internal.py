@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from pysus.management.records import FileComparison, FileRecord
-from pysus.management.sync import SyncEngine
+from pysus.management.sync import CatalogCursors, SyncEngine
 
 
 @pytest.fixture
@@ -285,7 +285,9 @@ class TestCatalogRows:
         ) as mock_writer_prop:
             mock_writer_prop.return_value = writer
             engine._catalog_rows(
-                central_cursor, dataset_cursor, columns_cursor, file, payload
+                CatalogCursors(central_cursor, dataset_cursor, columns_cursor),
+                file,
+                payload,
             )
 
         writer.ensure_dataset.assert_called_once()
