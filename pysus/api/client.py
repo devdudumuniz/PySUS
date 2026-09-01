@@ -774,50 +774,12 @@ class PySUS:
 
         return df
 
-    def read_parquet(
+    def _build_read_parquet_query(
         self,
         paths: list[Path],
-        sql: str | None = None,
-        mode: Literal["union", "intersection", "strict"] = "union",
-        add_dv: bool = True,
-    ) -> "DuckDBPyConnection | pd.DataFrame":
-        """Read Parquet files with optional schema handling and SQL filter.
-
-        Parameters
-        ----------
-        paths : list of Path
-            One or more Parquet file paths to read.
-        sql : str, optional
-            Optional SQL filter expression applied to the result.
-        mode : {"union", "intersection", "strict"}, optional
-            Schema resolution mode (default ``"union"``).
-        add_dv : bool, optional
-            When True, automatically applies the IBGE verification digit to
-            municipality code columns. If matching columns are found, a
-            DataFrame is returned instead of a ``DuckDBPyConnection``.
-
-        Returns
-        -------
-        DuckDBPyConnection or pd.DataFrame
-            The query result.
-
-        Raises
-        ------
-        ValueError
-            If no paths are provided, or if the schema mode is ``"strict"``
-            and the files have differing schemas.
-        """
-
-        from pysus.api.utils import add_dv as _add_dv_fn
-        from pysus.api.utils import is_geocode_column
-
-        if not paths:
-            raise ValidationError(
-                "No paths provided.\n"
-                "Hint: pass at least one path to read_parquet(), "
-                "e.g. read_parquet([path1, path2])."
-            )
-
+        mode: Literal["union", "intersection", "strict"],
+        sql: str | None,
+    ) -> str | duckdb.DuckDBPyConnection:
         def get_columns(path: Path) -> set[tuple[str, str]]:
             """Return the schema of a Parquet file as (name, type) pairs."""
             result = duckdb.execute(f"SELECT * FROM '{path}' LIMIT 0")
@@ -862,10 +824,15 @@ class PySUS:
             else:
                 query = f"SELECT {sql} FROM ({query}) AS t"
 
-        base = duckdb.execute(query)
+        return query
 
-        if not add_dv:
-            return base
+    def _apply_dv_to_query(
+        self,
+        base: duckdb.DuckDBPyConnection,
+        query: str,
+    ) -> duckdb.DuckDBPyConnection:
+        from pysus.api.utils import add_dv as _add_dv_fn
+        from pysus.api.utils import is_geocode_column
 
         geocode_cols = [
             col[0] for col in base.description if is_geocode_column(col[0])
@@ -889,5 +856,57 @@ class PySUS:
             )
             for c in base.description
         ]
-        query = f"SELECT {', '.join(selects)} FROM ({query}) AS _t"
-        return duckdb.execute(query)
+        new_query = f"SELECT {', '.join(selects)} FROM ({query}) AS _t"
+        return duckdb.execute(new_query)
+
+    def read_parquet(
+        self,
+        paths: list[Path],
+        sql: str | None = None,
+        mode: Literal["union", "intersection", "strict"] = "union",
+        add_dv: bool = True,
+    ) -> "DuckDBPyConnection | pd.DataFrame":
+        """Read Parquet files with optional schema handling and SQL filter.
+
+        Parameters
+        ----------
+        paths : list of Path
+            One or more Parquet file paths to read.
+        sql : str, optional
+            Optional SQL filter expression applied to the result.
+        mode : {"union", "intersection", "strict"}, optional
+            Schema resolution mode (default ``"union"``).
+        add_dv : bool, optional
+            When True, automatically applies the IBGE verification digit to
+            municipality code columns. If matching columns are found, a
+            DataFrame is returned instead of a ``DuckDBPyConnection``.
+
+        Returns
+        -------
+        DuckDBPyConnection or pd.DataFrame
+            The query result.
+
+        Raises
+        ------
+        ValueError
+            If no paths are provided, or if the schema mode is ``"strict"``
+            and the files have differing schemas.
+        """
+
+        if not paths:
+            raise ValidationError(
+                "No paths provided.\n"
+                "Hint: pass at least one path to read_parquet(), "
+                "e.g. read_parquet([path1, path2])."
+            )
+
+        query = self._build_read_parquet_query(paths, mode, sql)
+        if not isinstance(query, str):
+            return query  # It's an empty connection (mode='intersection' with no common cols)
+
+        base = duckdb.execute(query)
+
+        if not add_dv:
+            return base
+
+        return self._apply_dv_to_query(base, query)
