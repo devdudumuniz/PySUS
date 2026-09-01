@@ -55,6 +55,7 @@ class TestQueryParquet:
 
     def test_malicious_path(self):
         import duckdb
+
         malicious_path = "test.parquet'); DROP TABLE t1; --"
         with pytest.raises((duckdb.IOException, duckdb.Error)):
             query_parquet(malicious_path)

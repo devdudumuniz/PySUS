@@ -882,6 +882,7 @@ class PySUS:
             )  # type: ignore
         except duckdb.NotImplementedException:
             pass
+
         def quoted(identifier: str) -> str:
             return '"' + identifier.replace('"', '""') + '"'
 
