@@ -637,24 +637,8 @@ AVAILABLE_DATABASES: list[type[Dataset]] = [
 
 
 # Rebuild dataset models so postponed annotations resolve fully.
-import typing  # noqa: E402
-
-_MODELS = [
-    cls
-    for cls in list(globals().values())
-    if isinstance(cls, type)
-    and issubclass(cls, Dataset)
-    and cls.__module__ == __name__
-]
-for _model in _MODELS:
+for _model in AVAILABLE_DATABASES:
     try:
-        _model.model_rebuild(
-            _types_namespace={
-                "Dict": dict,
-                "List": list,
-                "Optional": typing.Optional,
-                "Union": typing.Union,
-            }
-        )
+        _model.model_rebuild()
     except Exception:  # noqa: B902 — rebuild best effort
         pass
