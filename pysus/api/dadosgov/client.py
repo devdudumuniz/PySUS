@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pathlib
 from collections.abc import Callable
+
+import anyio
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Optional
 
@@ -295,9 +297,9 @@ class DadosGov(BaseRemoteClient):
             response.raise_for_status()
             total = int(response.headers.get("Content-Length", 0))
             downloaded = 0
-            with open(output, "wb") as f:
+            async with await anyio.open_file(output, "wb") as f:
                 async for chunk in response.aiter_bytes():
-                    f.write(chunk)
+                    await f.write(chunk)
                     downloaded += len(chunk)
                     if callback:
                         callback(downloaded, total)
