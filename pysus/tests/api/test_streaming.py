@@ -53,6 +53,12 @@ class TestQueryParquet:
         result = rel.to_df()
         assert len(result) == 2
 
+    def test_malicious_path(self):
+        import duckdb
+        malicious_path = "test.parquet'); DROP TABLE t1; --"
+        with pytest.raises((duckdb.IOException, duckdb.Error)):
+            query_parquet(malicious_path)
+
 
 class TestToDf:
     def test_materializes(self, sample_parquet):
