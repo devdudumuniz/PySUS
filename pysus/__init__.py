@@ -97,7 +97,7 @@ def set_cache(path: str | pathlib.Path) -> pathlib.Path:
 def get_version() -> str:
     try:
         return importlib_metadata.version(__name__)
-    except importlib_metadata.PackageNotFoundError:  # pragma: no cover
+    except importlib_metadata.PackageNotFoundError:
         return "2.11.0"  # changed by semantic-release"
 
 
@@ -130,7 +130,7 @@ __all__ = [
 ]
 
 
-def _first_run_message() -> None:  # pragma: no cover
+def _first_run_message() -> None:
     """Print a friendly message on the first time PySUS is imported."""
     sentinel = CACHEPATH / ".pysus-seen"
     if sentinel.exists():
