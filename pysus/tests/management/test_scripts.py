@@ -183,26 +183,60 @@ class TestCompareClientsScript:
         from pysus.management.scripts.compare_clients import print_table
 
         result = {
-            "origin_counts": {"ftp": 1, "dadosgov": 0, "ducklake": 0},
+            "origin_counts": {"ftp": 2, "dadosgov": 1, "ducklake": 0},
             "reports": [
                 {
                     "dataset": "SINAN",
-                    "total": 1,
-                    "on_all_three": 0,
+                    "total": 100,
+                    "on_all_three": 10,
+                    "on_ftp_dadosgov": 20,
+                    "on_ftp_s3": 30,
+                    "on_dadosgov_s3": 40,
+                    "ftp_only": 50,
+                    "dadosgov_only": 60,
+                    "s3_only": 70,
+                    "examples": {
+                        "ftp_only": ["SINAN/DENG/2025/-/dengbr25"],
+                        "on_ftp_s3": ["SINAN/DENG/2024/-/dengbr24"],
+                        "all_three": ["SINAN/CHIK/2025/-/chikbr25"],
+                    },
+                },
+                {
+                    "dataset": "SIM",
+                    "total": 5,
+                    "on_all_three": 1,
                     "on_ftp_dadosgov": 0,
                     "on_ftp_s3": 0,
                     "on_dadosgov_s3": 0,
-                    "ftp_only": 1,
-                    "dadosgov_only": 0,
-                    "s3_only": 0,
-                    "examples": {"ftp_only": ["SINAN/DENG/2025/-/dengbr25"]},
+                    "ftp_only": 2,
+                    "dadosgov_only": 1,
+                    "s3_only": 1,
+                    "examples": None,
                 }
             ],
         }
         print_table(result)
         out = capsys.readouterr().out
-        assert "SINAN" in out
-        assert "ftp_only" in out
+
+        # Verify headers and dividers
+        assert "dataset      total   all3  ftp+dg  ftp+s3  dg+s3    ftp     dg     s3" in out
+        assert "---------------------------------------------------------------------" in out
+
+        # Verify the row data for SINAN and SIM
+        assert "SINAN          100     10      20      30     40     50     60     70" in out
+        assert "SIM              5      1       0       0      0      2      1      1" in out
+
+        # Verify origin record counts
+        assert "origin record counts: ftp=2, dadosgov=1, ducklake=0" in out
+
+        # Verify examples
+        assert "[SINAN] examples:" in out
+        assert "  ftp_only        SINAN/DENG/2025/-/dengbr25" in out
+        assert "  all_three       SINAN/CHIK/2025/-/chikbr25" in out
+
+        # Verify uninteresting examples are skipped
+        assert "on_ftp_s3" not in out
+        assert "[SIM] examples:" not in out
 
     def test_main_json(self, tmp_path, capsys):
         from pysus.management.scripts import compare_clients
