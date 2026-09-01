@@ -1,6 +1,6 @@
 from typing import Annotated, TypeAlias
 
-from pydantic import AfterValidator
+from pydantic import AfterValidator, BaseModel
 
 
 def _validate_s3_endpoint(v: str) -> str:
@@ -212,3 +212,14 @@ ColumnType: TypeAlias = Annotated[str, AfterValidator(_validate_column_type)]
 FileType: TypeAlias = Annotated[str, AfterValidator(_validate_file_type)]
 DatasetName: TypeAlias = Annotated[str, AfterValidator(_validate_dataset_name)]
 State: TypeAlias = Annotated[str, AfterValidator(_validate_state)]
+
+
+class FileFilter(BaseModel):
+    """Filter parameters for listing/querying files."""
+
+    dataset: DatasetName | None = None
+    client: Origin | None = None
+    group: str | list[str] | None = None
+    state: str | list[str] | None = None
+    year: int | list[int] | None = None
+    month: int | list[int] | None = None
