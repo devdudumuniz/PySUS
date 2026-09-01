@@ -146,6 +146,20 @@ class TestSyncClientsScript:
                 ):
                     assert sync_clients.main() == 0
 
+    def test_main_handles_exception(self, tmp_path, capsys):
+        from pysus.management.scripts import sync_clients
+
+        with patch.object(
+            sync_clients, "run", new=AsyncMock(side_effect=Exception("mocked error"))
+        ):
+            with patch.object(sync_clients, "load_env", return_value={}):
+                with patch(
+                    "sys.argv",
+                    ["sync_clients", "--datasets", "SINAN"],
+                ):
+                    assert sync_clients.main() == 1
+        assert "Error: mocked error" in capsys.readouterr().out
+
 
 class TestCompareClientsScript:
     def test_load_env(self, tmp_path):
