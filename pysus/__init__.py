@@ -63,7 +63,7 @@ from pysus.api._impl import info_table as info  # noqa: E402,F401
 __all__ = [*_impl_all, "set_cache", "CACHEPATH"]  # type: ignore[has-type]
 
 
-def _first_run_message() -> None:  # pragma: no cover
+def _first_run_message() -> None:
     """Print a friendly message on the first time PySUS is imported."""
     sentinel = CACHEPATH / ".pysus-seen"
     if sentinel.exists():
