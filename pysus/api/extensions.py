@@ -946,7 +946,7 @@ class Zip(BaseCompressedFile):
                         raise ValueError(
                             f"Path traversal blocked: {info.filename}"
                         )
-                z.extractall(target_dir)
+                    z.extract(info, target_dir)
 
         await to_thread.run_sync(_extract_sync)
 
