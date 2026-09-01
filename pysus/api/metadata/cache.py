@@ -117,10 +117,10 @@ def clear_cache() -> int:
 
 
 def cache_size() -> int:
-    """Return number of cached entries."""
+    """Return the total size of the cache directory in bytes."""
     if not _CACHE_DIR.exists():
         return 0
-    return sum(1 for _ in _CACHE_DIR.glob("*.json"))
+    return sum(f.stat().st_size for f in _CACHE_DIR.glob("*.json"))
 
 
 def _cache_path(key: str) -> Path:

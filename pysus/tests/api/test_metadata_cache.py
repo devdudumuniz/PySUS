@@ -58,19 +58,37 @@ def test_clear_cache():
     """Test clearing all cache entries."""
     set_cached_metadata("test:a", {"data": 1})
     set_cached_metadata("test:b", {"data": 2})
-    assert cache_size() >= 2
+    assert cache_size() > 0
 
     count = clear_cache()
     assert count >= 2
     assert cache_size() == 0
 
 
-def test_cache_size():
+def test_cache_size(monkeypatch, tmp_path):
     """Test cache size tracking."""
-    initial = cache_size()
-    set_cached_metadata("test:size1", {"data": 1})
-    set_cached_metadata("test:size2", {"data": 2})
-    assert cache_size() == initial + 2
+    import pysus.api.metadata.cache
+
+    mock_cache_dir = tmp_path / ".cache" / "pysus" / "metadata"
+    monkeypatch.setattr(pysus.api.metadata.cache, "_CACHE_DIR", mock_cache_dir)
+
+    # Test when directory doesn't exist
+    assert cache_size() == 0
+
+    # Create directory and files
+    mock_cache_dir.mkdir(parents=True)
+
+    file1 = mock_cache_dir / "1.json"
+    file1.write_text("a" * 10)  # 10 bytes
+
+    file2 = mock_cache_dir / "2.json"
+    file2.write_text("b" * 20)  # 20 bytes
+
+    # Ignore non-json files
+    file3 = mock_cache_dir / "3.txt"
+    file3.write_text("c" * 30)
+
+    assert cache_size() == 30
 
 
 def test_corrupted_cache_returns_none():
