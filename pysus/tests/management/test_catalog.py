@@ -7,6 +7,7 @@ import duckdb
 import pyarrow as pa
 import pytest
 from pysus.management.catalog import CatalogWriter
+from pysus.api.metadata.models import DatasetGroup
 
 _SCHEMA = """
 CREATE SCHEMA pysus;
@@ -492,7 +493,7 @@ class TestEnsureGroup:
     def test_creates_new_group(self, full_catalog):
         writer, cursor, _ = full_catalog
         gid = writer.ensure_group(
-            cursor, dataset_id=1, name="deng", long_name="Dengue"
+            cursor, dataset_id=1, group=DatasetGroup(name="deng", long_name="Dengue", description="")
         )
         assert gid == 1
         cursor.execute(
@@ -505,10 +506,10 @@ class TestEnsureGroup:
     def test_reuses_existing_group(self, full_catalog):
         writer, cursor, _ = full_catalog
         gid1 = writer.ensure_group(
-            cursor, dataset_id=1, name="deng", long_name="Dengue"
+            cursor, dataset_id=1, group=DatasetGroup(name="deng", long_name="Dengue", description="")
         )
         gid2 = writer.ensure_group(
-            cursor, dataset_id=1, name="deng", long_name="Dengue v2"
+            cursor, dataset_id=1, group=DatasetGroup(name="deng", long_name="Dengue v2", description="")
         )
         assert gid1 == gid2
         cursor.execute(
@@ -519,7 +520,7 @@ class TestEnsureGroup:
 
     def test_group_name_uppercased(self, full_catalog):
         writer, cursor, _ = full_catalog
-        gid = writer.ensure_group(cursor, dataset_id=1, name="  sinh  ")
+        gid = writer.ensure_group(cursor, dataset_id=1, group="  sinh  ")
         cursor.execute(
             "SELECT name FROM pysus.dataset_groups WHERE id = ?", (gid,)
         )

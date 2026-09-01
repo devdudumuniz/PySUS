@@ -29,6 +29,7 @@ from uuid import uuid4
 
 import anyio
 import httpx
+from pysus.api.metadata.models import DatasetGroup
 from pysus import CACHEPATH
 from pysus.api.ducklake.functional import upload_s3
 from pysus.api.errors import AuthenticationError, ConnectionError
@@ -1191,14 +1192,10 @@ class SyncEngine:
         )
 
         group = getattr(file, "group", None)
-        group_name = getattr(group, "name", None) if group is not None else None
-        group_name = str(group_name) if group_name else None
         group_id = writer.ensure_group(
             dataset_cursor,
             dataset_id,
-            group_name,
-            getattr(group, "long_name", None) if group else None,
-            getattr(group, "description", None) if group else None,
+            group,
         )
 
         writer.upsert_file(
@@ -1436,8 +1433,11 @@ class SyncEngine:
                     group_id = self.writer.ensure_group(
                         cursor,
                         dataset_id,
-                        str(group) if group else None,
-                        group_long_name or (str(group) if group else None),
+                        DatasetGroup(
+                            name=str(group),
+                            long_name=group_long_name or str(group),
+                            description="",
+                        ) if group else None,
                     )
                     cursor.execute(
                         "UPDATE pysus.files SET path = ?, month = ?, "
