@@ -111,12 +111,8 @@ def origin_from_s3_key(path: str | None) -> str | None:
 
 def compose_s3_key(
     origin: str,
-    dataset: str,
     name: str,
-    group: str | None = None,
-    year: int | None = None,
-    month: int | None = None,
-    state: str | None = None,
+    identity: IdentityKey,
 ) -> str:
     """Build the hierarchical S3 key for a parquet artifact.
 
@@ -131,16 +127,18 @@ def compose_s3_key(
     therefore keep a stable, predictable layout.
     """
     segments = {
-        "group": canonical_group(group),
-        "year": str(year) if year is not None else None,
-        "month": f"{month:02d}" if month is not None else None,
+        "group": canonical_group(identity.group),
+        "year": str(identity.year) if identity.year is not None else None,
+        "month": (
+            f"{identity.month:02d}" if identity.month is not None else None
+        ),
         "state": (
-            (state.strip().upper() or NATIONAL_STATE)
-            if state
+            (identity.state.strip().upper() or NATIONAL_STATE)
+            if identity.state
             else NATIONAL_STATE
         ),
     }
-    dirs = [origin.strip().lower(), canonical_dataset(dataset).lower()]
+    dirs = [origin.strip().lower(), canonical_dataset(identity.dataset).lower()]
     dirs.extend(segments[key] or KEY_MISSING for key in _KEY_SEGMENT_ORDER)
     return "/".join(["public/data", *dirs, parquet_key(name)])
 

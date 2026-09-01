@@ -20,7 +20,7 @@ from pathlib import Path
 import boto3
 from botocore.config import Config
 
-from .records import compose_s3_key, parquet_key
+from .records import IdentityKey, compose_s3_key, parquet_key, stem_of
 
 _BUCKET = "pysus"
 _ENDPOINT = "nbg1.your-objectstorage.com"
@@ -524,14 +524,18 @@ class BucketNormalizer:
             enriched = self._enrich(
                 origin, dataset, source_name, group, year, month, state
             )
-            new_key = compose_s3_key(
-                origin=origin,
+            identity = IdentityKey(
                 dataset=dataset,
-                name=source_name,
                 group=enriched["group"],
                 year=enriched["year"],
                 month=enriched["month"],
                 state=enriched["state"],
+                stem=stem_of(source_name),
+            )
+            new_key = compose_s3_key(
+                origin=origin,
+                name=source_name,
+                identity=identity,
             )
             if new_key == path:
                 continue
@@ -607,14 +611,18 @@ class BucketNormalizer:
             enriched = self._enrich(
                 origin, dataset, name, None, None, None, None
             )
-            new_key = compose_s3_key(
-                origin=origin,
+            identity = IdentityKey(
                 dataset=dataset,
-                name=name,
                 group=enriched["group"],
                 year=enriched["year"],
                 month=enriched["month"],
                 state=enriched["state"],
+                stem=stem_of(name),
+            )
+            new_key = compose_s3_key(
+                origin=origin,
+                name=name,
+                identity=identity,
             )
             if new_key == key:
                 plan.raw_objects.append(key)

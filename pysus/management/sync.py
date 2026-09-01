@@ -48,6 +48,7 @@ from .records import (
     SyncReport,
     compose_s3_key,
     freshness_status,
+    stem_of,
     write_journal_line,
 )
 
@@ -352,14 +353,20 @@ class SyncEngine:
     def s3_key_for(self, file: BaseRemoteFile) -> str:
         """Return the hierarchical S3 key for *file*'s parquet artifact."""
         group = getattr(file, "group", None)
-        return compose_s3_key(
-            origin=file.client.name,
+
+        identity = IdentityKey(
             dataset=file.dataset.name,
-            name=file.basename,
             group=getattr(group, "name", None) if group else None,
             year=file.year,
             month=file.month,
             state=file.state,
+            stem=stem_of(file.basename),
+        )
+
+        return compose_s3_key(
+            origin=file.client.name,
+            name=file.basename,
+            identity=identity,
         )
 
     async def upload_file(
@@ -1613,14 +1620,18 @@ class SyncEngine:
             if month is None or int(month) > 12:
                 continue
 
-            new_key = compose_s3_key(
-                origin="ftp",
+            identity = IdentityKey(
                 dataset=record.dataset,
-                name=source_name,
                 group=group or record.group,
                 year=parsed.get("year") or record.year,
                 month=int(month),
                 state=parsed.get("state") or record.state,
+                stem=stem_of(source_name),
+            )
+            new_key = compose_s3_key(
+                origin="ftp",
+                name=source_name,
+                identity=identity,
             )
             if new_key == record.path:
                 continue
