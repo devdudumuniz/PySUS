@@ -44,7 +44,7 @@ def set_cache(path: str | pathlib.Path) -> pathlib.Path:
 def get_version() -> str:
     try:
         return importlib_metadata.version(__name__)
-    except importlib_metadata.PackageNotFoundError:  # pragma: no cover
+    except importlib_metadata.PackageNotFoundError:
         return "2.10.6"  # changed by semantic-release"
 
 
