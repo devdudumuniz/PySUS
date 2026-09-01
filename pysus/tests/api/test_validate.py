@@ -1,12 +1,33 @@
 """Tests for pysus.api.validate — input validation with suggestions."""
 
+import importlib
+import sys
+
 import pytest
+
 from pysus.api.errors import ValidationError
 from pysus.api.validate import (
     validate_choice,
     validate_dataset,
     validate_origin,
 )
+
+
+def test_pandas_import_error_fallback(monkeypatch):
+    """Test that missing pandas falls back to pd = None."""
+    import pysus.api.validate
+    original_pd = pysus.api.validate.pd
+
+    monkeypatch.setitem(sys.modules, "pandas", None)
+
+    importlib.reload(pysus.api.validate)
+
+    assert pysus.api.validate.pd is None
+
+    # Clean up
+    monkeypatch.delitem(sys.modules, "pandas", raising=False)
+    importlib.reload(pysus.api.validate)
+    pysus.api.validate.pd = original_pd
 
 
 class TestValidateChoice:
