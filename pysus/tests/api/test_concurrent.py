@@ -75,3 +75,37 @@ class TestDownloadMany:
             [5, 4, 3, 2, 1], download_fn, max_workers=5
         )
         assert results == [5, 4, 3, 2, 1]
+
+    @pytest.mark.asyncio
+    async def test_concurrency_execution_overlap(self):
+        async def download_fn(file, cb):
+            await asyncio.sleep(0.1)
+            return file
+
+        start = asyncio.get_running_loop().time()
+        await download_many([1, 2, 3, 4], download_fn, max_workers=4)
+        duration = asyncio.get_running_loop().time() - start
+
+        assert duration < 0.3
+
+    @pytest.mark.asyncio
+    async def test_download_many_catches_specific_exceptions(self):
+        async def download_fn(file, cb):
+            if file == 1:
+                raise OSError("os error")
+            if file == 2:
+                raise RuntimeError("runtime error")
+            return file
+
+        results = await download_many([1, 2, 3], download_fn, max_workers=2)
+        assert isinstance(results[0], OSError)
+        assert isinstance(results[1], RuntimeError)
+        assert results[2] == 3
+
+    @pytest.mark.asyncio
+    async def test_download_many_propagates_other_exceptions(self):
+        async def download_fn(file, cb):
+            raise TypeError("type error")
+
+        with pytest.raises(TypeError):
+            await download_many([1], download_fn, max_workers=1)
