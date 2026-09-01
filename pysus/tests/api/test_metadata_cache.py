@@ -54,6 +54,29 @@ def test_invalidate_nonexistent():
     assert removed is False
 
 
+def test_invalidate_removes_file():
+    """Test that invalidate_metadata actually deletes the cache file."""
+    from pysus.api.metadata.cache import _cache_path
+
+    key = "test:invalidate_removes_file"
+    cache_file = _cache_path(key)
+
+    # Create a dummy cache file manually
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text('{"dummy": "data"}')
+
+    assert cache_file.exists() is True
+
+    try:
+        removed = invalidate_metadata(key)
+
+        assert removed is True
+        assert cache_file.exists() is False
+    finally:
+        if cache_file.exists():
+            cache_file.unlink()
+
+
 def test_clear_cache():
     """Test clearing all cache entries."""
     set_cached_metadata("test:a", {"data": 1})
