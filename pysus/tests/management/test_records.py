@@ -28,30 +28,45 @@ class TestComposeS3Key:
     def test_full_attributes(self):
         key = compose_s3_key(
             origin="ftp",
-            dataset="SIA",
             name="PAAC2501.dbc",
-            group="PA",
-            year=2025,
-            month=1,
-            state="AC",
+            identity=IdentityKey(
+                dataset="SIA",
+                group="PA",
+                year=2025,
+                month=1,
+                state="AC",
+                stem=stem_of("PAAC2501.dbc"),
+            ),
         )
         assert key == "public/data/ftp/sia/PA/2025/01/AC/PAAC2501.parquet"
 
     def test_missing_month_state_defaults_br(self):
         key = compose_s3_key(
             origin="ftp",
-            dataset="SINAN",
             name="DENGBR25.dbc",
-            group="DENG",
-            year=2025,
+            identity=IdentityKey(
+                dataset="SINAN",
+                group="DENG",
+                year=2025,
+                month=None,
+                state=None,
+                stem=stem_of("DENGBR25.dbc"),
+            ),
         )
         assert key == "public/data/ftp/sinan/DENG/2025/_/BR/DENGBR25.parquet"
 
     def test_missing_group_and_year(self):
         key = compose_s3_key(
             origin="dadosgov",
-            dataset="SINAN",
             name="dados_tuberculose.csv",
+            identity=IdentityKey(
+                dataset="SINAN",
+                group=None,
+                year=None,
+                month=None,
+                state=None,
+                stem=stem_of("dados_tuberculose.csv"),
+            ),
         )
         assert (
             key == "public/data/dadosgov/sinan/_/_/_/BR/"
@@ -61,37 +76,57 @@ class TestComposeS3Key:
     def test_month_zero_padded(self):
         key = compose_s3_key(
             origin="ftp",
-            dataset="SIH",
             name="RDAC2502.dbc",
-            group="RD",
-            year=2025,
-            month=2,
-            state="AC",
+            identity=IdentityKey(
+                dataset="SIH",
+                group="RD",
+                year=2025,
+                month=2,
+                state="AC",
+                stem=stem_of("RDAC2502.dbc"),
+            ),
         )
         assert key == "public/data/ftp/sih/RD/2025/02/AC/RDAC2502.parquet"
 
     def test_dataset_lowercased(self):
         key = compose_s3_key(
             origin="FTP",
-            dataset="SINAN",
             name="DENGBR25.dbc",
+            identity=IdentityKey(
+                dataset="SINAN",
+                group=None,
+                year=None,
+                month=None,
+                state=None,
+                stem=stem_of("DENGBR25.dbc"),
+            ),
         )
         assert key.startswith("public/data/ftp/sinan/")
 
     def test_csv_zip_and_dbc_share_key(self):
         a = compose_s3_key(
             origin="ftp",
-            dataset="SINAN",
             name="DENGBR25.dbc",
-            group="DENG",
-            year=2025,
+            identity=IdentityKey(
+                dataset="SINAN",
+                group="DENG",
+                year=2025,
+                month=None,
+                state=None,
+                stem=stem_of("DENGBR25.dbc"),
+            ),
         )
         b = compose_s3_key(
             origin="dadosgov",
-            dataset="SINAN",
             name="DENGBR25.csv.zip",
-            group="DENG",
-            year=2025,
+            identity=IdentityKey(
+                dataset="SINAN",
+                group="DENG",
+                year=2025,
+                month=None,
+                state=None,
+                stem=stem_of("DENGBR25.csv.zip"),
+            ),
         )
         assert a.split("/")[-1] == b.split("/")[-1] == "DENGBR25.parquet"
 
