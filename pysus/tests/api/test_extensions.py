@@ -1501,6 +1501,44 @@ async def test_zip_path_traversal_blocked(tmp_dir):
 
 
 @pytest.mark.asyncio
+async def test_zip_rejects_symlink_members_before_extracting(tmp_dir):
+    path = tmp_dir / "symlink.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        info = zipfile.ZipInfo("link")
+        info.create_system = 3
+        info.external_attr = 0o120777 << 16
+        archive.writestr(info, "target")
+
+    with pytest.raises(ValueError, match="(?i)symlink"):
+        await Zip(path=path).extract(target_dir=tmp_dir / "out")
+
+
+@pytest.mark.asyncio
+async def test_tar_uses_safe_filter_when_available(tmp_dir, monkeypatch):
+    path = tmp_dir / "safe.tar"
+    with tarfile.open(path, "w") as archive:
+        info = tarfile.TarInfo(name="safe.txt")
+        payload = b"safe"
+        info.size = len(payload)
+        import io
+
+        archive.addfile(info, io.BytesIO(payload))
+
+    calls = []
+    original = tarfile.TarFile.extractall
+
+    def recording_extractall(self, *args, **kwargs):
+        calls.append(kwargs.get("filter"))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", recording_extractall)
+    await Tar(path=path).extract(target_dir=tmp_dir / "out")
+
+    expected = "data" if hasattr(tarfile, "data_filter") else None
+    assert calls == [expected]
+
+
+@pytest.mark.asyncio
 async def test_csv_columns_semicolon_delimiter(tmp_dir):
     """CSV.columns must use detected delimiter, not hardcode comma."""
     path = tmp_dir / "data.csv"
