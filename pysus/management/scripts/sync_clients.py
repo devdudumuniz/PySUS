@@ -105,18 +105,22 @@ def main() -> int:
 
     datasets = [d.upper() for d in args.datasets] if args.datasets else None
 
-    summary = asyncio.run(
-        run(
-            datasets,
-            args.checkpoint_every,
-            args.force,
-            args.workers,
-            args.ftp_connections,
-            args.saude_only,
+    try:
+        summary = asyncio.run(
+            run(
+                datasets,
+                args.checkpoint_every,
+                args.force,
+                args.workers,
+                args.ftp_connections,
+                args.saude_only,
+            )
         )
-    )
-    print(summary)
-    return 0
+        print(summary)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
 
 
 if __name__ == "__main__":
