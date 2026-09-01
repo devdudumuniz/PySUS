@@ -182,12 +182,15 @@ class FTP(BaseRemoteClient):
     ) -> pathlib.Path:
         """Download a remote file locally, optionally reporting progress."""
 
-        async def _fetch():
-            try:
-                self.ftp.voidcmd("NOOP")
-            except BrokenPipeError:
-                await self.connect()
+        def _noop():
+            self.ftp.voidcmd("NOOP")
 
+        try:
+            await to_thread.run_sync(_noop)
+        except BrokenPipeError:
+            await self.connect()
+
+        def _fetch():
             total_size = self.ftp.size(str(file.path)) or 0
             current_size = 0
 
@@ -203,7 +206,7 @@ class FTP(BaseRemoteClient):
                 self.ftp.retrbinary(f"RETR {file.path}", _write_and_callback)
             return output
 
-        return await _fetch()
+        return await to_thread.run_sync(_fetch)
 
     @staticmethod
     def _line_parser(
