@@ -72,15 +72,25 @@ class DadosGov(BaseRemoteClient):
     _token: str | None = PrivateAttr(default=None)
     _client: httpx.AsyncClient | None = PrivateAttr(default=None)
 
-    def __init__(self, **data):
+    def __init__(self, token: str | None = None, **data):
         """Initialize the DadosGov client.
 
         Parameters
         ----------
+        token : str, optional
+            The API authentication token.
         ``**data``
             Additional keyword arguments forwarded to the parent constructor.
         """
         super().__init__(**data)
+        if not token:
+            import os
+            token = os.environ.get('DADOSGOV_TOKEN')
+            if not token:
+                import warnings
+                from pysus.api.errors import PySUSWarning
+                warnings.warn('DADOSGOV_TOKEN is not set', PySUSWarning)
+        self._token = token
 
     @property
     def name(self) -> str:
