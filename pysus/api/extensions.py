@@ -935,6 +935,7 @@ class Zip(BaseCompressedFile):
             """Extract ZIP contents synchronously in a thread."""
             root = target_dir.resolve()
             with zipfile.ZipFile(self.path) as z:
+                safe_members = []
                 for info in z.infolist():
                     unix_mode = info.external_attr >> 16
                     if unix_mode and unix_mode & 0o170000 == 0o120000:
@@ -946,7 +947,8 @@ class Zip(BaseCompressedFile):
                         raise ValueError(
                             f"Path traversal blocked: {info.filename}"
                         )
-                z.extractall(target_dir)
+                    safe_members.append(info)
+                z.extractall(target_dir, members=safe_members)
 
         await to_thread.run_sync(_extract_sync)
 
@@ -1102,6 +1104,7 @@ class Tar(BaseCompressedFile):
             """Extract Tar contents synchronously in a thread."""
             root = target_dir.resolve()
             with tarfile.open(self.path) as t:
+                safe_members = []
                 for member in t.getmembers():
                     if member.issym() or member.islnk():
                         raise ValueError(
@@ -1114,7 +1117,12 @@ class Tar(BaseCompressedFile):
                         raise ValueError(
                             f"Path traversal blocked: {member.name}"
                         )
-                t.extractall(target_dir)
+                    safe_members.append(member)
+
+                kwargs = {}
+                if hasattr(tarfile, "data_filter"):
+                    kwargs["filter"] = "data"
+                t.extractall(target_dir, members=safe_members, **kwargs)
 
         await to_thread.run_sync(_extract)
         tasks = [ExtensionFactory.instantiate(target_dir / m) for m in members]
