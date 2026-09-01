@@ -820,14 +820,12 @@ class PySUS:
 
         def get_columns(path: Path) -> set[tuple[str, str]]:
             """Return the schema of a Parquet file as (name, type) pairs."""
-            result = duckdb.execute(f"SELECT * FROM '{path}' LIMIT 0")
+            result = duckdb.execute(
+                "SELECT * FROM read_parquet(?) LIMIT 0", [[str(path)]]
+            )
             return {(col[0], str(col[1])) for col in result.description}
 
-        if len(paths) == 1:
-            query = f"SELECT * FROM '{paths[0]}'"
-        else:
-            paths_str = ", ".join(f"'{p}'" for p in paths)
-            query = f"SELECT * FROM read_parquet([{paths_str}])"
+        query = "SELECT * FROM read_parquet(?)"
 
         schemas = [get_columns(p) for p in paths]
         common_columns = set.intersection(*schemas) if schemas else set()
@@ -847,22 +845,24 @@ class PySUS:
             if not common_columns:
                 return duckdb.execute("SELECT * WHERE 1=0")
             cols = ", ".join(f'"{c[0]}"' for c in sorted(common_columns))
-            paths_str = ", ".join(f"'{p}'" for p in paths)
-            query = f"SELECT {cols} FROM read_parquet([{paths_str}])"
+            query = f"SELECT {cols} FROM read_parquet(?)"
 
         else:
-            paths_str = ", ".join(f"'{p}'" for p in paths)
-            query = (
-                f"SELECT * FROM read_parquet([{paths_str}], union_by_name=True)"
-            )
+            query = "SELECT * FROM read_parquet(?, union_by_name=True)"
+
+        paths_list = [str(p) for p in paths]
+        params = [paths_list]
 
         if sql:
             if sql.upper().startswith("SELECT"):
+                num_replacements = sql.count("FROM t")
+                if num_replacements > 1:
+                    params = params * num_replacements
                 query = sql.replace("FROM t", f"FROM ({query}) AS t")
             else:
                 query = f"SELECT {sql} FROM ({query}) AS t"
 
-        base = duckdb.execute(query)
+        base = duckdb.execute(query, params)
 
         if not add_dv:
             return base
@@ -890,4 +890,4 @@ class PySUS:
             for c in base.description
         ]
         query = f"SELECT {', '.join(selects)} FROM ({query}) AS _t"
-        return duckdb.execute(query)
+        return duckdb.execute(query, params)
