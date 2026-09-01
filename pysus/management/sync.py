@@ -955,8 +955,6 @@ class SyncEngine:
                             dataset_adapters[record.dataset.lower()] = adapter
                             self._catalog_write_entry(
                                 adapter,
-                                central_adapter,
-                                columns_adapter,
                                 record.file,
                                 payload,
                             )
@@ -1138,8 +1136,6 @@ class SyncEngine:
     def _catalog_write_entry(
         self,
         adapter,
-        central_adapter,
-        columns_adapter,
         file: BaseRemoteFile,
         payload: dict,
     ) -> None:
@@ -1151,6 +1147,10 @@ class SyncEngine:
         database instance when its last connection closes, so no
         connection is ever held across operations here.
         """
+        ducklake = self._require_ducklake()
+        central_adapter = ducklake.catalog_adapter
+        columns_adapter = ducklake.columns_adapter
+
         with central_adapter.transaction() as (
             central_conn,
             central_cursor,
