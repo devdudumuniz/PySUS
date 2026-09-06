@@ -1,6 +1,18 @@
 Release Notes
 ---
 
+## [2.11.2](https://github.com/AlertaDengue/PySUS/compare/2.11.1...2.11.2) (2026-09-01)
+
+### Bug Fixes
+
+* **web:** preserve native directory picker values ([#336](https://github.com/AlertaDengue/PySUS/issues/336)) ([34878a8](https://github.com/AlertaDengue/PySUS/commit/34878a8f664ea3c87cc6ef2f1f68363d2a1ecdf8))
+
+## [2.11.1](https://github.com/AlertaDengue/PySUS/compare/2.11.0...2.11.1) (2026-09-01)
+
+### Bug Fixes
+
+* **catalog:** clear file_columns before rewriting an existing file row ([#341](https://github.com/AlertaDengue/PySUS/issues/341)) ([2cef688](https://github.com/AlertaDengue/PySUS/commit/2cef688d2029055918762067302442634983a734))
+
 ## [2.11.0](https://github.com/AlertaDengue/PySUS/compare/2.10.7...2.11.0) (2026-09-01)
 
 ### Features
