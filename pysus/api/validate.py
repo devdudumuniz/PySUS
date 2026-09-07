@@ -12,6 +12,11 @@ Usage::
 
 from __future__ import annotations
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+
 from difflib import get_close_matches
 
 from pysus.api.errors import ValidationError
