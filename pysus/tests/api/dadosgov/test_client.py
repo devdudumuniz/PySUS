@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+import warnings
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -14,7 +15,7 @@ from pysus.api.dadosgov.client import (
     to_bool,
     to_datetime,
 )
-from pysus.api.errors import AuthenticationError, ConnectionError
+from pysus.api.errors import AuthenticationError, ConnectionError, PySUSWarning
 
 
 class TestToDatetime:
@@ -239,9 +240,32 @@ class TestConjuntoDados:
 
 
 class TestDadosGov:
+    @pytest.fixture(autouse=True)
+    def patch_env(self):
+        with patch.dict("os.environ", {"DADOSGOV_TOKEN": "dummy-token"}):
+            yield
+
+    def test_init_warns_missing_token(self):
+        with patch.dict("os.environ", clear=True):
+            with pytest.warns(PySUSWarning, match="DADOSGOV_TOKEN is not set"):
+                DadosGov()
+
+    def test_init_with_token_no_warning(self):
+        with patch.dict("os.environ", clear=True):
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", PySUSWarning)
+                DadosGov(token="test-token")
+
+    def test_init_with_env_token_no_warning(self):
+        with patch.dict("os.environ", {"DADOSGOV_TOKEN": "env-token"}, clear=True):
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", PySUSWarning)
+                DadosGov()
+
     def test_name(self):
-        client = DadosGov()
-        assert client.name == "DadosGov"
+        with patch.dict("os.environ", {"DADOSGOV_TOKEN": "test"}, clear=True):
+            client = DadosGov()
+            assert client.name == "DadosGov"
 
     def test_long_name(self):
         client = DadosGov()
@@ -275,12 +299,16 @@ class TestDadosGov:
 
     @pytest.mark.asyncio
     async def test_connect_without_token_raises_value_error(self):
-        client = DadosGov()
-        with pytest.raises(
-            AuthenticationError,
-            match="A token is required to connect to DadosGov",
-        ):
-            await client.connect(token=None)
+        with patch.dict("os.environ", clear=True):
+            # Ignore the warning during init to test connect() failure
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", PySUSWarning)
+                client = DadosGov()
+            with pytest.raises(
+                AuthenticationError,
+                match="A token is required to connect to DadosGov",
+            ):
+                await client.connect(token=None)
 
     @pytest.mark.asyncio
     async def test_connect_with_existing_token(self):
