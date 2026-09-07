@@ -1,4 +1,4 @@
-from pysus.api.utils import add_dv, is_geocode_column
+from pysus.api.utils import add_dv, format_progress, is_geocode_column
 
 
 def test_is_geocode_column_true():
@@ -50,3 +50,25 @@ def test_add_dv_5digit_returns_as_is():
 
 def test_add_dv_8digit_returns_as_is():
     assert add_dv("12345678") == "12345678"
+
+
+def test_format_progress():
+    assert format_progress(0, 100) == "0.0%"
+    assert format_progress(50, 100) == "50.0%"
+    assert format_progress(100, 100) == "100.0%"
+    assert format_progress(1, 3) == "33.3%"
+    assert format_progress(2, 3) == "66.7%"
+
+
+def test_format_progress_zero_total():
+    assert format_progress(0, 0) == "100.0%"
+    assert format_progress(50, 0) == "100.0%"
+
+
+def test_format_progress_negative_total():
+    assert format_progress(0, -10) == "100.0%"
+    assert format_progress(5, -10) == "100.0%"
+
+
+def test_format_progress_exceed_total():
+    assert format_progress(150, 100) == "150.0%"

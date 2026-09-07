@@ -62,3 +62,25 @@ def add_dv(geocode: str) -> str:
         return miscalculated.get(code, code)
 
     return geocode
+
+
+def format_progress(current: int, total: int) -> str:
+    """Format progress as a percentage string.
+
+    Parameters
+    ----------
+    current : int
+        The current progress amount.
+    total : int
+        The total amount.
+
+    Returns
+    -------
+    str
+        The formatted percentage string (e.g., '50.0%').
+    """
+    if total <= 0:
+        return "100.0%"
+
+    percentage = (current / total) * 100
+    return f"{percentage:.1f}%"
