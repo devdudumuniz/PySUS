@@ -12,18 +12,29 @@ Usage::
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+
+
+@dataclass
+class GeoOptions:
+    """Options for GeoJSON export."""
+
+    lat_col: str = "LATITUDE"
+    lon_col: str = "LONGITUDE"
+    geocode_col: str | None = None
+    properties: list[str] | None = None
 
 
 def to_geojson(
     df: pd.DataFrame,
     path: str | Path,
-    lat_col: str = "LATITUDE",
-    lon_col: str = "LONGITUDE",
-    geocode_col: str | None = None,
-    properties: list[str] | None = None,
+    options: GeoOptions | str | None = None,
+    *args: Any,
+    **kwargs: Any,
 ) -> Path:
     """Export DataFrame to GeoJSON with Point geometries.
 
@@ -33,28 +44,32 @@ def to_geojson(
         Input DataFrame.
     path : str or Path
         Output file path.
-    lat_col : str
-        Latitude column name.
-    lon_col : str
-        Longitude column name.
-    geocode_col : str, optional
-        Geocode column for properties.
-    properties : list, optional
-        Additional columns to include as properties.
+    options : GeoOptions, optional
+        Options for export including column names and properties.
+    *args, **kwargs
+        Legacy support for passing geographic columns positionally or as keywords
+        (lat_col, lon_col, geocode_col, properties).
 
     Returns
     -------
     Path
         Path to created file.
     """
+    if not isinstance(options, GeoOptions):
+        lat_col = options if isinstance(options, str) else kwargs.get("lat_col", "LATITUDE")
+        lon_col = args[0] if len(args) > 0 else kwargs.get("lon_col", "LONGITUDE")
+        geocode_col = args[1] if len(args) > 1 else kwargs.get("geocode_col")
+        properties = args[2] if len(args) > 2 else kwargs.get("properties")
+        options = GeoOptions(lat_col, lon_col, geocode_col, properties)
+
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     features = []
 
     for idx, row in df.iterrows():
-        lat = row.get(lat_col)
-        lon = row.get(lon_col)
+        lat = row.get(options.lat_col)
+        lon = row.get(options.lon_col)
         if pd.notna(lat) and pd.notna(lon):
             geometry = {
                 "type": "Point",
@@ -65,11 +80,11 @@ def to_geojson(
             }
 
             props: dict[str, str | None] = {}
-            if geocode_col and geocode_col in row:
-                props["geocode"] = str(row[geocode_col])
+            if options.geocode_col and options.geocode_col in row:
+                props["geocode"] = str(row[options.geocode_col])
 
-            if properties:
-                for prop in properties:
+            if options.properties:
+                for prop in options.properties:
                     if prop in row:
                         props[prop] = (
                             str(row[prop]) if pd.notna(row[prop]) else None
