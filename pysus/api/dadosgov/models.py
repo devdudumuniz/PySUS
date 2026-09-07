@@ -391,7 +391,7 @@ class Dataset(BaseRemoteDataset):
 
 
 # Rebuild pydantic models with postponed annotations so their fields are
-# fully defined (validation and introspection — incl. sphinx autodoc —
+# fully defined (validation and introspection — incl. Sphinx documentation —
 # fail on half-built models).
 import typing  # noqa: E402
 
