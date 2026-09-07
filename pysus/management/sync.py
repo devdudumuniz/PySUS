@@ -115,6 +115,15 @@ class CatalogCursors:
     columns: Any
 
 
+@dataclass
+class CatalogCursors:
+    """Bundles cursors for the three metadata catalogs."""
+
+    central: Any
+    dataset: Any
+    columns: Any
+
+
 class _WeightGate:
     """Bound how many pipeline slots are in use by byte weight.
 
