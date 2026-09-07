@@ -80,13 +80,19 @@ class Inventory:
     async def _collect_ftp(
         self, datasets: list[str] | None = None
     ) -> list[FileRecord]:
+        import asyncio
+
         client = await self.pysus.get_ftp()
         records: list[FileRecord] = []
         for dataset in await client.datasets():
             if datasets and dataset.name.upper() not in datasets:
                 continue
-            for item in await dataset.content:
-                records.extend(await self._walk_ftp_item(item))
+            content = await dataset.content
+            walk_results = await asyncio.gather(
+                *(self._walk_ftp_item(item) for item in content)
+            )
+            for res in walk_results:
+                records.extend(res)
         return records
 
     async def _walk_ftp_item(self, item: Any) -> list[FileRecord]:
