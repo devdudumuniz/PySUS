@@ -10,7 +10,10 @@ skipped automatically.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
@@ -20,6 +23,40 @@ from .resources import CKANPackage, Resource
 
 _DOWNLOAD_CHUNK = 1 << 16
 _NON_SAFE = re.compile(r"[^\w.\- ]")
+
+
+def _digest_spec(value: str) -> tuple[str, str] | None:
+    """Recognise CKAN hashes whose algorithm is unambiguous."""
+    raw = value.strip().lower()
+    if ":" in raw:
+        algorithm, raw = raw.split(":", 1)
+        if algorithm not in {"md5", "sha256"}:
+            return None
+    else:
+        algorithm = {32: "md5", 64: "sha256"}.get(len(raw), "")
+    if len(raw) != {"md5": 32, "sha256": 64}.get(algorithm):
+        return None
+    if not re.fullmatch(r"[0-9a-f]+", raw):
+        return None
+    return algorithm, raw
+
+
+def _matches_metadata(path: Path, resource: Resource) -> bool:
+    """Check only the size and digest that the catalog can identify."""
+    if resource.size is not None and resource.size > 0:
+        if path.stat().st_size != resource.size:
+            return False
+    digest = _digest_spec(resource.hash)
+    return digest is None or _matches_digest(path, digest)
+
+
+def _matches_digest(path: Path, digest: tuple[str, str]) -> bool:
+    algorithm, expected = digest
+    actual = hashlib.new(algorithm)
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(_DOWNLOAD_CHUNK), b""):
+            actual.update(chunk)
+    return actual.hexdigest() == expected
 
 
 def filename_for(resource: Resource, slug: str, index: int) -> str:
@@ -109,19 +146,65 @@ async def download_resource(
     index = resource.position or 0
     dest_path = target_dir / filename_for(resource, package.name, index)
 
-    if dest_path.exists() and not overwrite:
+    if (
+        dest_path.exists()
+        and not overwrite
+        and _matches_metadata(dest_path, resource)
+    ):
         return dest_path
 
-    async with client.stream("GET", resource.url) as response:
-        response.raise_for_status()
-        total = int(response.headers.get("Content-Length", 0))
-        downloaded = 0
-        with dest_path.open("wb") as fh:
-            async for chunk in response.aiter_bytes(chunk_size=_DOWNLOAD_CHUNK):
-                fh.write(chunk)
-                downloaded += len(chunk)
-                if progress:
-                    progress(downloaded, total)
+    # The temporary file is on the destination filesystem, and its exclusive
+    # name lets concurrent downloads keep their in-progress bytes separate.
+    with tempfile.NamedTemporaryFile(
+        mode="wb",
+        prefix=f".{dest_path.name}.",
+        suffix=".part",
+        dir=target_dir,
+        delete=False,
+    ) as fh:
+        tmp_path = Path(fh.name)
+    try:
+        async with client.stream("GET", resource.url) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("Content-Length", 0))
+            downloaded = 0
+            with tmp_path.open("wb") as fh:
+                async for chunk in response.aiter_bytes(
+                    chunk_size=_DOWNLOAD_CHUNK
+                ):
+                    fh.write(chunk)
+                    downloaded += len(chunk)
+                    if progress:
+                        progress(downloaded, total)
+        # httpx may decode content before yielding it; compare byte counts
+        # only when the response did not declare an encoding.
+        identity = response.headers.get("Content-Encoding", "identity").lower()
+        if total > 0 and identity == "identity" and downloaded != total:
+            raise OSError("Downloaded resource has an incomplete response body")
+        # CKAN's size may be stale. Prefer the current response length when
+        # the two disagree; absent that signal, a known catalog size applies.
+        if (
+            identity == "identity"
+            and resource.size is not None
+            and resource.size > 0
+        ):
+            if (
+                total <= 0 or total == resource.size
+            ) and downloaded != resource.size:
+                raise OSError("Downloaded resource does not match CKAN size")
+        digest = _digest_spec(resource.hash)
+        if digest is not None and not _matches_digest(tmp_path, digest):
+            raise OSError("Downloaded resource does not match CKAN hash")
+        if (
+            dest_path.exists()
+            and not overwrite
+            and _matches_metadata(dest_path, resource)
+        ):
+            return dest_path
+        # Close the writer before replacement so this also works on Windows.
+        os.replace(tmp_path, dest_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
     return dest_path
 
 
