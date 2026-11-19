@@ -402,7 +402,51 @@ conda activate pysus
 poetry install
 ```
 
-### Tests
+### Windows source-only drive
+
+Keep one canonical checkout. Before setup, use a cache directory on a different
+local drive and validate it without changing the filesystem:
+
+```powershell
+# Clone (or reuse the existing canonical checkout) and enter it.
+git clone https://github.com/<owner>/PySUS.git
+Set-Location PySUS
+# Setup: process-local caches, then the locked environment.
+. ./scripts/development-cache.ps1 -CacheRoot C:\dev -DryRun
+. ./scripts/development-cache.ps1 -CacheRoot C:\dev
+poetry install --all-extras
+# Verify: offline unit suite and the repository hooks.
+poetry run pytest pysus/tests/ -o cache_dir="$env:DM_CACHE_ROOT/python/pytest/pysus" --basetemp="$env:DM_CACHE_ROOT/temp/pysus/pytest"
+poetry run pre-commit run --all-files
+# Build wheel/sdist outside the checkout.
+poetry build --output "$env:DM_CACHE_ROOT/artifacts/pysus"
+# Start: offline CLI smoke; `pysus web` launches the local Streamlit UI.
+poetry run pysus version
+poetry run pysus --help
+```
+
+On Windows the local state database (DuckDB) keeps a single pooled
+connection per client instead of reopening the file on every update, because
+reopening can race Windows file-handle release. Always close the client
+(`with PySUS() as client:` or `async with PySUS() as client:`) so the
+connection and event loop are released.
+
+The helper sets only the current PowerShell process environment. It rejects
+relative paths, drive roots, UNC paths, source-drive destinations and existing
+junctions in the cache path. Use the host's canonical runner when required by
+its storage policy. Keep durable data and private recovery copies separate from
+disposable builds; changing a cache setting does not migrate existing data.
+`poetry.lock` is the dependency authority. Do not follow this setup with
+`pip install -e .` resolving dependencies again: that can replace locked
+versions. Poetry already installs the current project into its environment.
+
+The unit suite uses captured or synthetic fixtures. A passing offline suite
+does not validate current DATASUS availability or authorize a real data download.
+For recovery, clone the controlled remote's recorded final revision, install
+from `poetry.lock`, then run these checks with an external environment/cache.
+Preserve upstream contribution branches until their integration is verified.
+
+### Running tests
 
 ```bash
 # Unit tests (host)

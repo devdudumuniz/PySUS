@@ -9,6 +9,8 @@ import pytest
 from pysus.api.client import PySUS
 from pysus.api.errors import PySUSWarning
 
+pytestmark = pytest.mark.usefixtures("offline_ducklake")
+
 
 class TestSinan:
     def test_sinan_calls_fetch_data(self):

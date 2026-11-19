@@ -18,6 +18,8 @@ from pysus.api._impl.source import APPLICABILITY, origin_fetchers
 from pysus.api.bag import FileBag
 from pysus.api.client import PySUS
 
+pytestmark = pytest.mark.usefixtures("offline_ducklake")
+
 
 @pytest.fixture()
 def pysus():

@@ -14,6 +14,8 @@ from pysus.api._impl.source import (
 from pysus.api.client import PySUS
 from pysus.api.errors import PySUSWarning
 
+pytestmark = pytest.mark.usefixtures("offline_ducklake")
+
 
 class TestOriginConstants:
     def test_valid_origins_exclude_ducklake(self):

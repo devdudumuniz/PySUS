@@ -10,8 +10,10 @@ need ``async``/``await``.
 """
 
 import asyncio
+import contextlib
 import enum
 import functools
+import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +27,7 @@ from pysus import CACHEPATH
 from pysus.api.types import Origin
 from sqlalchemy import DateTime, Enum, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 from .dadosgov import DadosGovClient
 from .ducklake.client import DuckLake
@@ -153,10 +155,18 @@ class PySUS:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.cachepath = db_path.parent
-        self.engine = create_engine(
-            f"duckdb:///{db_path.resolve().as_posix()}",
-            poolclass=NullPool,
-        )
+        database_url = f"duckdb:///{db_path.resolve().as_posix()}"
+        if sys.platform == "win32":
+            # Reopening the file for every state update can race Windows
+            # handle release. Reuse one connection until the client closes.
+            self.engine = create_engine(
+                database_url,
+                poolclass=QueuePool,
+                pool_size=1,
+                max_overflow=0,
+            )
+        else:
+            self.engine = create_engine(database_url, poolclass=NullPool)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
@@ -245,15 +255,25 @@ class PySUS:
         exc_val,
         exc_tb,
     ) -> None:
-        """Exit synchronous context, closing the persistent event loop."""
-        if self._loop is not None and not self._loop.is_closed():
-            if not self._loop.is_running():
-                self._loop.run_until_complete(
+        """Exit synchronous context, closing the persistent event loop.
+
+        The loop is closed and the sync state reset even when the async
+        cleanup raises, so a failed close never leaks the owned loop.
+        """
+        loop = self._loop
+        if loop is not None and (loop.is_closed() or loop.is_running()):
+            # Closed, or borrowed from a running notebook loop: not ours.
+            loop = None
+        try:
+            if loop is not None:
+                loop.run_until_complete(
                     self.__aexit__(exc_type, exc_val, exc_tb),
                 )
-                self._loop.close()
-        self._sync = False
-        self._loop = None
+        finally:
+            if loop is not None:
+                loop.close()
+            self._sync = False
+            self._loop = None
 
     async def __aenter__(self):
         self._ducklake = DuckLake()
@@ -263,15 +283,20 @@ class PySUS:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Clean up all client connections and dispose of the engine."""
 
-        if self._ducklake:
-            await self._ducklake.close()
-        if self._ftp:
-            await self._ftp.close()
-        if self._dadosgov:
-            await self._dadosgov.close()
-        if self._saude:
-            await self._saude.close()
-        self.engine.dispose()
+        # The exit stack runs every registered cleanup even when an earlier
+        # one fails or is cancelled, then re-raises that failure (later
+        # failures keep earlier ones as ``__context__``). Callbacks run in
+        # reverse order: remote clients close first, the state engine last.
+        async with contextlib.AsyncExitStack() as cleanup:
+            cleanup.callback(self.engine.dispose)
+            for client in (
+                self._saude,
+                self._dadosgov,
+                self._ftp,
+                self._ducklake,
+            ):
+                if client:
+                    cleanup.push_async_callback(client.close)
 
     @_sync_aware
     async def get_ducklake(
@@ -344,7 +369,11 @@ class PySUS:
             )
             record = parquet_version or records[0]
 
-            return await ExtensionFactory.instantiate(str(record.path))
+            local_path = str(record.path)
+
+        # File loading can yield; release the state connection first so a
+        # concurrent download can update its state while this file loads.
+        return await ExtensionFactory.instantiate(local_path)
 
     def _get_dest_path(self, file: BaseRemoteFile) -> Path:
         """Build the local filesystem path for a given remote file."""

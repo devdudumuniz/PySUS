@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pysus.api.client import PySUS, _run_sync, _sync_aware
 
+pytestmark = pytest.mark.usefixtures("offline_ducklake")
+
 
 class TestRunSync:
     """Tests for the standalone ``_run_sync`` helper."""
@@ -232,3 +234,24 @@ class TestPySUSSyncContext:
             assert c._loop is not None
             assert not c._loop.is_closed()
         assert client._loop is None
+
+    @pytest.mark.parametrize(
+        "error", [RuntimeError("close failed"), asyncio.CancelledError()]
+    )
+    def test_sync_exit_closes_loop_when_cleanup_fails(self, tmp_path, error):
+        db = tmp_path / "test.db"
+        client = PySUS(db_path=db)
+        with patch(
+            "pysus.api.client.DuckLake.close",
+            AsyncMock(side_effect=error),
+        ):
+            with pytest.raises(type(error)) as raised:
+                with client:
+                    loop = client._loop
+        assert raised.value is error
+        assert loop is not None and loop.is_closed()
+        assert client._loop is None
+        assert client._sync is False
+        # The state engine was still disposed: on Windows the pooled
+        # DuckDB handle must be released for the file to be renamed.
+        db.rename(db.with_suffix(".closed.db"))

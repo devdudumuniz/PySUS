@@ -19,6 +19,8 @@ from pysus.api.client import PySUS, _run_sync
 from pysus.api.extensions import ExtensionFactory
 from pysus.api.models import BaseLocalFile
 
+pytestmark = pytest.mark.usefixtures("offline_ducklake")
+
 
 def _local(path: Path) -> BaseLocalFile:
     return _run_sync(ExtensionFactory.instantiate(path))

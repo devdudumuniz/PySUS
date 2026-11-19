@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -180,6 +181,85 @@ class TestLocalFileState:
             mock_factory.assert_called_once()
 
         await client.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_state_update_can_finish_while_another_file_loads(
+    test_db_path, tmp_path
+):
+    client = PySUS(db_path=test_db_path)
+    first_path = tmp_path / "first.dbc"
+    await client._update_state(
+        local_path=first_path,
+        remote_path="/remote/first.dbc",
+        client_name="ftp",
+        status=DownloadStatus.COMPLETED,
+    )
+    remote = MagicMock()
+    remote.client.name = "FTP"
+    remote.path = "/remote/first.dbc"
+    loading = asyncio.Event()
+    updated = asyncio.Event()
+    handle = object()
+
+    async def load_file(path):
+        assert path == str(first_path)
+        loading.set()
+        await asyncio.wait_for(updated.wait(), timeout=5)
+        return handle
+
+    async def update_other_file():
+        await asyncio.wait_for(loading.wait(), timeout=5)
+        await client._update_state(
+            local_path=tmp_path / "second.dbc",
+            remote_path="/remote/second.dbc",
+            client_name="ftp",
+            status=DownloadStatus.COMPLETED,
+        )
+        updated.set()
+
+    try:
+        with patch(
+            "pysus.api.extensions.ExtensionFactory.instantiate",
+            side_effect=load_file,
+        ):
+            result, _ = await asyncio.wait_for(
+                asyncio.gather(
+                    client.get_local_file(remote), update_other_file()
+                ),
+                timeout=10,
+            )
+        assert result is handle
+        assert client.get_completed_remote_paths() == {
+            "/remote/first.dbc",
+            "/remote/second.dbc",
+        }
+    finally:
+        await client.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error", [RuntimeError("close failed"), asyncio.CancelledError()]
+)
+async def test_cleanup_releases_state_after_remote_close_failure(
+    test_db_path, error
+):
+    client = PySUS(db_path=test_db_path)
+    client.engine.dispose = MagicMock(wraps=client.engine.dispose)
+    client._ducklake = MagicMock(close=AsyncMock(side_effect=error))
+    remaining = [MagicMock(close=AsyncMock()) for _ in range(3)]
+    client._ftp, client._dadosgov, client._saude = remaining
+
+    with pytest.raises(type(error)) as raised:
+        await client.__aexit__(None, None, None)
+
+    assert raised.value is error
+    client.engine.dispose.assert_called_once()
+    for remote in remaining:
+        remote.close.assert_awaited_once()
+    # On Windows this also proves the pooled file handle was released.
+    test_db_path.rename(test_db_path.with_suffix(".closed.db"))
 
 
 class TestGetCompletedRemotePaths:
@@ -1289,7 +1369,10 @@ class TestUpdateStateOnExistingRecord:
         client = PySUS(db_path=test_db_path)
         local = pathlib.Path(tmp_path / "DNAC2024.dbc")
 
-        for status in (DownloadStatus.DOWNLOADING, DownloadStatus.COMPLETED):
+        for status in (
+            DownloadStatus.DOWNLOADING,
+            DownloadStatus.COMPLETED,
+        ) * 10:
             await client._update_state(
                 local_path=local,
                 remote_path="/r/DNAC2024.dbc",
