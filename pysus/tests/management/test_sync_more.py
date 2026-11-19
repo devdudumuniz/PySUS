@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 from pysus.management.catalog import sha256_of
 from pysus.management.records import FileComparison, FileRecord
-from pysus.management.sync import SyncEngine
+from pysus.management.sync import CatalogCursors, SyncEngine
 
 
 @pytest.fixture
@@ -471,7 +471,11 @@ class TestCatalogRowsSaude:
                 "pysus.api.saude.schemas.apply_column_descriptions"
             ) as mock_apply:
                 engine._catalog_rows(
-                    central_cursor, dataset_cursor, columns_cursor, f, payload
+                    CatalogCursors(
+                        central_cursor, dataset_cursor, columns_cursor
+                    ),
+                    f,
+                    payload,
                 )
 
         mock_apply.assert_called_once()
@@ -1183,7 +1187,7 @@ class TestRunPipelineBranches:
         engine._download_raw_with_retry = AsyncMock(side_effect=_download)
         engine._convert_and_upload = AsyncMock(side_effect=_convert)
 
-        def _catalog_write_entry(adapter, central, columns, file, payload):
+        def _catalog_write_entry(adapter, file, payload):
             if file.basename == "CRASHBR25.dbc":
                 raise RuntimeError("catalog boom")
 

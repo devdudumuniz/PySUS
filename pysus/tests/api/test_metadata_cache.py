@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+import pysus.api.metadata.cache as cache_module
+import pytest
 from pysus.api.metadata.cache import (
     cache_size,
     clear_cache,
@@ -11,9 +13,10 @@ from pysus.api.metadata.cache import (
 )
 
 
-def setup_function():
-    """Clear cache before each test."""
-    clear_cache()
+@pytest.fixture(autouse=True)
+def isolated_metadata_cache(monkeypatch, tmp_path):
+    """Keep metadata tests out of the user's real cache directory."""
+    monkeypatch.setattr(cache_module, "_CACHE_DIR", tmp_path / "metadata")
 
 
 def test_set_and_get():
@@ -52,6 +55,14 @@ def test_invalidate_nonexistent():
     """Test invalidating a key that doesn't exist."""
     removed = invalidate_metadata("nonexistent:key")
     assert removed is False
+
+
+def test_invalidate_removes_the_expected_file():
+    key = "test:invalidate-file"
+    cache_file = set_cached_metadata(key, {"data": 1})
+
+    assert invalidate_metadata(key) is True
+    assert not cache_file.exists()
 
 
 def test_clear_cache():

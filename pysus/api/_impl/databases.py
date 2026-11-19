@@ -1104,12 +1104,7 @@ def saude_cnes(**kwargs) -> list[str] | pd.DataFrame:
 
 
 def list_files(
-    dataset: types.DatasetName,
-    client: types.Origin | None = None,
-    group: str | None = None,
-    state: str | None = None,
-    year: int | list[int] | None = None,
-    month: int | list[int] | None = None,
+    dataset_or_query: types.DatasetName | types.FileFilter | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """List catalog files filtered by client, group, state, year, and month.
@@ -1144,22 +1139,49 @@ def list_files(
     >>> pysus.list_files("SINAN", year=2020, state="RJ")
     """
 
+    if isinstance(dataset_or_query, types.FileFilter):
+        query = dataset_or_query
+    else:
+        # Support for passing parameters as kwargs for backwards compatibility
+        kwargs_dataset = kwargs.get("dataset", dataset_or_query)
+        if kwargs_dataset is None:
+            raise ValueError(
+                "Either a FileFilter object or 'dataset' must be provided."
+            )
+
+        query = types.FileFilter(
+            dataset=kwargs_dataset,
+            client=kwargs.get("client"),
+            group=kwargs.get("group"),
+            state=kwargs.get("state"),
+            year=kwargs.get("year"),
+            month=kwargs.get("month"),
+        )
+
     async def _list():
         from pysus.api.client import PySUS
 
         async with PySUS() as pysus:
-            years = [year] if isinstance(year, int) else (year or [None])
-            months = [month] if isinstance(month, int) else (month or [None])
+            years = (
+                [query.year]
+                if isinstance(query.year, int)
+                else (query.year or [None])
+            )
+            months = (
+                [query.month]
+                if isinstance(query.month, int)
+                else (query.month or [None])
+            )
 
             records = []
             for y in years:
                 for m in months:
                     records.extend(
                         await pysus.query(
-                            client=client,
-                            dataset=dataset,
-                            group=group,
-                            state=state,
+                            client=query.client,
+                            dataset=query.dataset,
+                            group=query.group,
+                            state=query.state,
                             year=y,
                             month=m,
                         )

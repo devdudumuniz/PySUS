@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Optional
 
+import anyio
 import httpx
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PrivateAttr
 from pysus import __version__
@@ -291,16 +292,27 @@ class DadosGov(BaseRemoteClient):
             .replace("http:/", "http://")
         )
 
-        async with self._client.stream("GET", url) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("Content-Length", 0))
-            downloaded = 0
-            with open(output, "wb") as f:
-                async for chunk in response.aiter_bytes():
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if callback:
-                        callback(downloaded, total)
+        partial = output.with_suffix(output.suffix + ".partial")
+
+        completed = False
+        try:
+            async with self._client.stream("GET", url) as response:
+                response.raise_for_status()
+                total = int(response.headers.get("Content-Length", 0))
+                downloaded = 0
+                async with await anyio.open_file(partial, "wb") as f:
+                    async for chunk in response.aiter_bytes():
+                        await f.write(chunk)
+                        downloaded += len(chunk)
+                        if callback:
+                            callback(downloaded, total)
+            await anyio.to_thread.run_sync(partial.replace, output)
+            completed = True
+        finally:
+            if not completed:
+                await anyio.to_thread.run_sync(
+                    lambda: partial.unlink(missing_ok=True)
+                )
         return output
 
 

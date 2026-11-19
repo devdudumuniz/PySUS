@@ -525,25 +525,7 @@ def _is_bag_nonempty(bag: MetadataBag) -> bool:
     return _origin_of(bag) != ""
 
 
-def merge_bags(
-    bags: list[MetadataBag],
-    *,
-    descriptive_precedence: tuple[str, ...] = DESCRIPTIVE_PRECEDENCE,
-    structure_precedence: tuple[str, ...] = STRUCTURE_PRECEDENCE,
-    modified_precedence: tuple[str, ...] = MODIFIED_PRECEDENCE,
-) -> MetadataBag:
-    """Merge several bags (typically one per origin) into one.
-
-    Bags whose ``provenance.origin`` is empty participate only through
-    field-level fallbacks. All precedence tuples can be overridden.
-    """
-    if not bags:
-        return MetadataBag()
-    if len(bags) == 1:
-        return bags[0]
-
-    populated = [b for b in bags if _is_bag_nonempty(b)] or bags
-
+def _merge_identity(populated: list[MetadataBag]) -> IdentityFacet:
     # identity — first non-empty; aliases union
     identity = IdentityFacet()
     identity.name = _first(*[b.identity.name for b in populated])
@@ -557,7 +539,12 @@ def merge_bags(
             if alias and alias not in seen_aliases:
                 identity.aliases.append(alias)
                 seen_aliases.add(alias)
+    return identity
 
+
+def _merge_description(
+    populated: list[MetadataBag], descriptive_precedence: tuple[str, ...]
+) -> DescriptionFacet:
     # description — winner by descriptive precedence; tags union
     winner = _pick_by_precedence(
         populated,
@@ -582,7 +569,12 @@ def merge_bags(
         for theme in b.description.themes:
             if theme and theme not in description.themes:
                 description.themes.append(theme)
+    return description
 
+
+def _merge_temporal(
+    populated: list[MetadataBag], modified_precedence: tuple[str, ...]
+) -> TemporalFacet:
     # temporal — created earliest, modified by precedence, year/month
     # first non-None
     temporal = TemporalFacet()
@@ -613,7 +605,10 @@ def merge_bags(
         if b.temporal.month is not None:
             temporal.month = b.temporal.month
             break
+    return temporal
 
+
+def _merge_spatial(populated: list[MetadataBag]) -> SpatialFacet:
     # spatial — most specific scope; ufs/municipalities union
     spatial = SpatialFacet()
     scope_winner = max(
@@ -632,7 +627,10 @@ def merge_bags(
         if b.spatial.state:
             spatial.state = b.spatial.state
             break
+    return spatial
 
+
+def _merge_provenance(populated: list[MetadataBag]) -> ProvenanceFacet:
     # provenance — first non-empty; license most permissive
     provenance = ProvenanceFacet()
     provenance.organization = _first(
@@ -656,7 +654,12 @@ def merge_bags(
         if b.provenance.origin and b.provenance.origin not in origins:
             origins.append(b.provenance.origin)
     provenance.origin = "/".join(origins)
+    return provenance
 
+
+def _merge_structure(
+    populated: list[MetadataBag], structure_precedence: tuple[str, ...]
+) -> StructureFacet:
     # structure — columns by structure precedence, counts max
     col_winner = _pick_by_precedence(
         populated,
@@ -676,7 +679,10 @@ def merge_bags(
     structure.schema_fingerprint = _first(
         *[b.structure.schema_fingerprint for b in populated]
     )
+    return structure
 
+
+def _merge_access(populated: list[MetadataBag]) -> AccessFacet:
     # access — url first non-empty, size first non-zero, auth OR
     access = AccessFacet()
     access.url = _first(*[b.access.url for b in populated])
@@ -691,7 +697,10 @@ def merge_bags(
     access.requires_auth = any(b.access.requires_auth for b in populated)
     access.policy = _first(*[b.access.policy for b in populated])
     access.mime_type = _first(*[b.access.mime_type for b in populated])
+    return access
 
+
+def _merge_quality(populated: list[MetadataBag]) -> QualityFacet:
     # quality — fingerprint first non-empty, integrity OR, freshness max
     quality = QualityFacet()
     quality.content_fingerprint = _first(
@@ -712,22 +721,46 @@ def merge_bags(
         if b.quality.completeness_pct is not None
     ]
     quality.completeness_pct = max(pcts) if pcts else None
+    return quality
 
+
+def _merge_raw(populated: list[MetadataBag]) -> dict[str, Any]:
     # raw — merged dicts (later bags win on key collisions)
     raw: dict[str, Any] = {}
     for b in populated:
         raw.update(b.raw)
+    return raw
+
+
+def merge_bags(
+    bags: list[MetadataBag],
+    *,
+    descriptive_precedence: tuple[str, ...] = DESCRIPTIVE_PRECEDENCE,
+    structure_precedence: tuple[str, ...] = STRUCTURE_PRECEDENCE,
+    modified_precedence: tuple[str, ...] = MODIFIED_PRECEDENCE,
+) -> MetadataBag:
+    """Merge several bags (typically one per origin) into one.
+
+    Bags whose ``provenance.origin`` is empty participate only through
+    field-level fallbacks. All precedence tuples can be overridden.
+    """
+    if not bags:
+        return MetadataBag()
+    if len(bags) == 1:
+        return bags[0]
+
+    populated = [b for b in bags if _is_bag_nonempty(b)] or bags
 
     return MetadataBag(
-        identity=identity,
-        description=description,
-        temporal=temporal,
-        spatial=spatial,
-        provenance=provenance,
-        structure=structure,
-        access=access,
-        quality=quality,
-        raw=raw,
+        identity=_merge_identity(populated),
+        description=_merge_description(populated, descriptive_precedence),
+        temporal=_merge_temporal(populated, modified_precedence),
+        spatial=_merge_spatial(populated),
+        provenance=_merge_provenance(populated),
+        structure=_merge_structure(populated, structure_precedence),
+        access=_merge_access(populated),
+        quality=_merge_quality(populated),
+        raw=_merge_raw(populated),
     )
 
 

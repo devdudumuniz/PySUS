@@ -47,13 +47,11 @@ def query_parquet(
 
     if "*" in str(path) or path.is_dir():
         glob_path = str(path) if "*" in str(path) else f"{path}/*.parquet"
-        conn.execute(
-            f"CREATE VIEW data AS SELECT * FROM read_parquet('{glob_path}')"
-        )
+        rel = conn.read_parquet(glob_path)
     else:
-        conn.execute(
-            f"CREATE VIEW data AS SELECT * FROM read_parquet('{path}')"
-        )
+        rel = conn.read_parquet(str(path))
+
+    rel.create_view("data")
 
     return conn.sql(query)
 

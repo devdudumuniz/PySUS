@@ -63,7 +63,6 @@ async def download_http(
             async with httpx.AsyncClient(
                 headers=headers,
                 follow_redirects=True,
-                verify=False,
                 limits=limits,
                 timeout=timeout,
             ) as client:
